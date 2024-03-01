@@ -23,6 +23,8 @@ from hsnf import integer_system
 # Packages to benchmark
 import time
 import resource 
+import sys
+sys.setrecursionlimit(10000)
 
 def genMatOverFp(p,m,n):
     """Generate random m x n matrix over Fp"""
@@ -42,14 +44,15 @@ def solveModQ(A,b,q):
         q # int
     )
 
-# Create random matrices 
+# Create random matrice
 q = 100
-A = genMatOverFp(q,100,100)
-b = genVecOverFp(q,100)
+size = 220
+A = genMatOverFp(q,size,size)
+b = genVecOverFp(q,size)
 
 # Benchmark computation time
 time_start = time.perf_counter()
-solveModQ(A,b,100)
+solveModQ(A,b,size)
 time_elapsed = (time.perf_counter() - time_start)
 
 # Print time and memory to console
