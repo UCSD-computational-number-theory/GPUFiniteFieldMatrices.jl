@@ -16,83 +16,37 @@ Convert gpu_C back into a SparseMatModP
 using CUDA
 using Base.Threads
 
-function gpu_matrix_multiply(A::SparseMatModP, B::SparseMatModP)
 
-
-    # Allocate memory on the GPU for matrices A, B, and the result C
-    d_A_indptr = CuArray(A)
-    d_B_indptr = CuArray(B)
-    d_C = CUDA.zeros(Int64, A.ncols, B.nrows)
-
-    # Define the number of blocks and threads per block
-    threads_per_block = 32
-    blocks_per_grid = ceil(Int, m / threads_per_block)
-
-    # Define the kernel function for matrix multiplication
-    function kernel_multiply(d_A, d_B, d_C, m, n, q)
-        i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-        j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
-
-        if i <= m && j <= q
-            temp = 0.0f0
-            for k = 1:n
-                temp += d_A[i, k] * d_B[k, j]
-            end
-            d_C[i, j] = temp
-        end
-        return
-    end
-
-    # Launch kernel
-    @cuda threads = (threads_per_block, threads_per_block) blocks = (blocks_per_grid, blocks_per_grid) kernel_multiply(d_A, d_B, d_C, m, n, q)
-
-    # Copy the result back from the GPU to the CPU
-    C = Array(d_C)
-
-    return C
+function matrixMul(a::CuArray{Int64, 2}, b::CuArray{Int64, 2})
+    m, n = size(a)
+    n, k = size(b)
+    c = CUDA.zeros(Int64, m, k)
+    threads = (16, 16)
+    blocks = ((m + threads[1] - 1) ÷ threads[1], (k + threads[2] - 1) ÷ threads[2])
+    
+    @cuda threads=threads blocks=blocks mul_kernel(c, a, b, m, n, k)
+    
+    return collect(c)
 end
 
-# function sparse_to_csr_P(mat::SparseMatModP)
-#     """ Helper function to find CSR of input sparse matrix """
-#     nvals = length(mat.vals) # Number of values
+function mul_kernel(c, a, b, m, n, k)
+    idx, idy = threadIdx().x, threadIdx().y
+    bidx, bidy = (blockIdx().x - 1) * blockDim().x, (blockIdx().y - 1) * blockDim().y
+    
+    if bidx + idx <= m && bidy + idy <= k
+        val = 0.0
+        for i = 1:n
+            val += a[bidx + idx, i] * b[i, bidy + idy]
+        end
+        c[bidx + idx, bidy + idy] = val
+    end
+    
+    return
+end
 
-#     indptr = zeros(Int, nrows + 1)
-#     indices = zeros(Int, nnz)
-#     data = zeros(Float64, nnz)
+# Example usage
+A = CUDA.rand(Int64, 3, 4)
+B = CUDA.rand(Int64, 4, 5)
 
-#     # Count the number of non-zero elements in each row
-#     @threads for i in 1:nnz
-#         @inbounds indptr[row[i] + 1] += 1
-#     end
-
-#     # Cumulative sum to obtain indptr
-#     cumsum = 0
-#     for i in 1:nrows
-#         tmp = indptr[i]
-#         indptr[i] = cumsum
-#         cumsum += tmp
-#     end
-#     indptr[nrows + 1] = nnz
-
-#     # Fill indices and data arrays
-#     @threads for i in 1:nnz
-#         @inbounds r = row[i]
-#         idx = atomic_add!(pointer(indptr, r + 1), 1) # atomic operation to avoid race condition
-#         indices[idx] = col[i]
-#         data[idx] = var[i]
-#     end
-
-#     # Shift indptr to the right by one
-#     for i in nrows:-1:1
-#         indptr[i + 1] = indptr[i]
-#     end
-#     indptr[1] = 0
-
-#     return indptr, indices, data
-# end
-
-# # Example usage
-# A = rand(Float32, 1000, 1000)
-# B = rand(Float32, 1000, 1000)
-
-# C = gpu_matrix_multiply(A, B)
+C = matrixMul(A, B)
+print(dump(C))

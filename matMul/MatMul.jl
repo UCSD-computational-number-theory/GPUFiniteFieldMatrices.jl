@@ -48,9 +48,8 @@ end
 function gpu_matmul()
     d_A = CUDA.rand(Int32, (100, 100))
     d_B = CUDA.rand(Int32, (100, 100))
-    d_C = CuArray{UInt32}(undef, (100, 100))
-
     d_C = d_A * d_B
+    return d_C
 end
 
 function gen_sample_mat()
@@ -65,10 +64,9 @@ function compare()
     @time naive_matmul()
     println("CPU Parallelized time: ")
     @time cpu_matmul()
-    println("Linalg Library time: ")
-    @time linalg_matmul()
     println("GPU Parallelized time: ")
-    # @btime gpu_matmul()
+    @time gpu_matmul()
+    println("DONE")
 end
 
 compare()
