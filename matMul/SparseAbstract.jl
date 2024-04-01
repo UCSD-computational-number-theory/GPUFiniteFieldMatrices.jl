@@ -19,7 +19,7 @@ pass an element mod p into an a matrix. Technically we can, but it is better to
 extract the values of val,p,n,pmults and move these into the matrix instead.
 """
 
-struct SparseMatModP{T}
+struct SparseMatModP{T} <: AbstractMatrix
     """ Custom data structure for sparse matrices"""
     rows::Array{T,1}
     cols::Array{T,1}

@@ -16,6 +16,9 @@ Convert gpu_C back into a SparseMatModP
 using CUDA
 using Base.Threads
 
+function sparse_matmul_P(A,B,C)
+    
+
 
 function matrixMul(a::CuArray{Int64, 2}, b::CuArray{Int64, 2})
     m, n = size(a)
