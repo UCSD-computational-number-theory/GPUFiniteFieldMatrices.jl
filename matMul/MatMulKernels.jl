@@ -1,6 +1,6 @@
 using CUDA, BenchmarkTools, Test
 
-function naive_matmul_kernel(CC, A, B, N)
+function naive_matmul_kernel(CC, A, B)
     row = (blockIdx().x-1) * blockDim().x + (threadIdx().x)
     col = (blockIdx().y-1) * blockDim().y + (threadIdx().y)
 
@@ -21,7 +21,7 @@ function naive_flatten_kernel(C, CC, mod)
     col = (blockIdx().y-1) * blockDim().y + threadIdx().y
 
     total = 0
-    for i = 1:2
+    for i = 1:8
         total += CC[row,col,i] % mod
     end
     C[row,col] = total % mod
@@ -29,29 +29,36 @@ function naive_flatten_kernel(C, CC, mod)
     return
 end
 
-N = 64^2
-mod = 3
+N = 64
+mod = 10
+dims = 8
 
 A = rand(1:10, N, N)
 B = ones(Int, N, N)
 C = zeros(Int, N, N)
 
-d_A = CUDA.CuArray(A)
-d_B = CUDA.CuArray(B)
-d_CC = CUDA.CuArray(zeros(Int, N, N, 2))
-d_C = CUDA.CuArray(zeros(Int, N, N))
-
-function gpu_matmul(d_A, d_B, d_C, d_CC)
-    @cuda threads=(isqrt(N),isqrt(N),2) blocks=(isqrt(N),isqrt(N)) naive_matmul_kernel(d_CC, d_A, d_B, N)
+function gpu_matmul(A, B)
+    d_A = CUDA.CuArray(A)
+    d_B = CUDA.CuArray(B)
+    d_CC = CUDA.CuArray(zeros(Int, N, N, dims))
+    d_C = CUDA.CuArray(zeros(Int, N, N))
+    @cuda threads=(isqrt(N),isqrt(N),dims) blocks=(isqrt(N),isqrt(N)) naive_matmul_kernel(d_CC, d_A, d_B)
     @cuda threads=(isqrt(N),isqrt(N)) blocks=(isqrt(N),isqrt(N)) naive_flatten_kernel(d_C, d_CC, mod)
+    return Array(d_C)
 end
 
 function cpu_matmul(A, B, C)
     C = A * B
 end
 
+println("
+Benchmark details:\n
+Matrix size: $N x $N, 
+Modulus: $mod,
+Dimensions: $dims
+")
 @time cpu_matmul(A, B, C)
-@time gpu_matmul(d_A, d_B, d_C, d_CC)
+@time gpu_matmul(A, B)
 
 # println(C)
 # println(Array(d_C))
