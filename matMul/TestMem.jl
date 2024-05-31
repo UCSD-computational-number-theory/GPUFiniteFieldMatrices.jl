@@ -1,28 +1,28 @@
 using CUDA, BenchmarkTools, Test
 
-function experiment(A, B, C, p)
+function experiment(A, B, C)
 
-    sharedA = CUDA.CuStaticSharedArray(int64, [128, 128])
-    copyto!(sharedA,A)
-    sharedB = CUDA.CuStaticSharedArray(int64, [128, 128])
-    copyto!(sharedB,B)
+    # sharedA = CUDA.CuStaticSharedArray(A, (64, 64))
+    # sharedB = CUDA.CuStaticSharedArray(B, (64, 64))
 
-    # Calculate row and column indices of the element in C
-    row = (blockIdx().x-1) * blockDim().x + threadIdx().x
-    col = (blockIdx().y-1) * blockDim().y + threadIdx().y
+    # row = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    # col = (blockIdx().y-1) * blockDim().y + threadIdx().y
 
-    for i = 0:1
-        # load
-    end
+    # for i = 0:1
+    #     sharedA[row][col] = A[row][col]
+    #     sharedB[row][col] = B[row][col]
+    # end
 
-    CUDA.sync_threads()
+    # CUDA.sync_threads()
 
     return
 end
 
-N = 128
+N = 64
+dims = 2
+
 A = rand(1:10, N, N)
 B = ones(Int64, N, N)
 C = zeros(Int64, N, N)
 
-experiment(A,B,C,5)
+@cuda threads=(isqrt(N),isqrt(N),dims) blocks=(isqrt(N),isqrt(N)) experiment(A,B,C)
