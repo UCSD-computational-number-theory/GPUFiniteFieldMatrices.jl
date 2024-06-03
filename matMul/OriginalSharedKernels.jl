@@ -1,6 +1,6 @@
 using CUDA, BenchmarkTools, Test
 
-const global TILE_WIDTH = 32
+const global TILE_WIDTH = 16 #32
 
 # __global__ void MatrixMulKernel(float* d_M, float* d_N, float* d_P, width)
 function SharedMatMul(d_A, d_B, d_C)
@@ -63,11 +63,34 @@ function SharedMatMul(d_A, d_B, d_C)
 # }
 end
 
-N = 4096
+function shift_matrix(N)
+    A = zeros(Int64,N,N)
+    half = div(N,2)
+    for i in 1:half
+        A[i,half+i] = 1
+    end
+    A
+end
+
+function v_matrix(N)
+    B = zeros(Int64,N,N)
+    half = div(N,2)
+    for i in 1:half
+        B[2*i,i] = 1
+        B[2*i,N-i+1] = 1
+    end
+    B
+end
+
+function test_gpu_matmul(N)
+
+#N = 4096
 MOD = 10
 
-A = rand(1:MOD, N, N)
-B = ones(Int64, N, N)
+#A = rand(1:MOD, N, N)
+#B = ones(Int64, N, N)
+A = v_matrix(N)
+B = shift_matrix(N)
 C = zeros(Int64, N, N)
 
 d_A = CUDA.CuArray(A)
@@ -75,11 +98,16 @@ d_B = CUDA.CuArray(B)
 d_C = CUDA.CuArray(C)
 
 println("GPU for $N x $N")
-@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(TILE_WIDTH,TILE_WIDTH) SharedMatMul(d_A,d_B,d_C)
-@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(TILE_WIDTH,TILE_WIDTH) SharedMatMul(d_A,d_B,d_C)
-@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(TILE_WIDTH,TILE_WIDTH) SharedMatMul(d_A,d_B,d_C)
+nblockrows = div(N,TILE_WIDTH)
+@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(nblockrows,nblockrows) SharedMatMul(d_A,d_B,d_C)
+@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(nblockrows,nblockrows) SharedMatMul(d_A,d_B,d_C)
+@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(nblockrows,nblockrows) SharedMatMul(d_A,d_B,d_C)
 
-println("CPU for $N x $N")
-@time C = A*B
-@time C = A*B
-@time C = A*B
+#println("CPU for $N x $N")
+#@time C = A*B
+#@time C = A*B
+#@time C = A*B
+
+Array(d_C)
+
+end
