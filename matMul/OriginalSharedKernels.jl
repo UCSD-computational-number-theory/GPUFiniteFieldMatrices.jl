@@ -76,10 +76,6 @@ function SharedMatMul(d_A, d_B, d_C, P, width)
 # }
 end
 
-M = 500
-N = 400
-K = 400
-MOD = 10
 
 function matmul(A, B, p)
 
@@ -114,25 +110,64 @@ function matmul(A, B, p)
     d_C = CUDA.CuArray(C_padded)
 
     println("RAW COMPUTE TIME")
-    @time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(max_size,TILE_WIDTH),div(max_size,TILE_WIDTH)) SharedMatMul(d_A,d_B,d_C,p,padded_rows)
+    CUDA.@time @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(max_size,TILE_WIDTH),div(max_size,TILE_WIDTH)) SharedMatMul(d_A,d_B,d_C,p,padded_rows)
     println("FULL SETUP TIME")
 
     return Array(d_C)[1:A_rows, 1:B_cols]
 end
 
+function shift_matrix(N)
+    A = zeros(Int64,N,N)
+    half = div(N,2)
+    for i in 1:half
+        A[i,half+i] = 1
+    end
+    A
+end
+
+function v_matrix(N)
+    B = zeros(Int64,N,N)
+    half = div(N,2)
+    for i in 1:half
+        B[2*i,i] = 1
+        B[2*i,N-i+1] = 1
+    end
+    B
+end
+
+function test_vshift_gpu(N)
+
+  A = v_matrix(N)
+  B = shift_matrix(N)
+  
+  # prime thie jitter
+  #@time C = matmul(A,B,10)
+  CUDA.@time CC = matmul(A,B,10)
+
+  CC
+end
+
+function test_gpu_matmul()
+
+M = 500
+N = 400
+K = 400
+MOD = 10
+
 A = rand(1:(MOD-1), M, N)
 B = Matrix{Int64}(I, N, K)
-@time C = matmul(A, B, 10)
+CUDA.@time C = matmul(A, B, 10)
 # println(C)
 
 A = rand(1:(MOD-1), M, N)
 B = Matrix{Int64}(I, N, K)
-@time C = matmul(A, B, 10)
+CUDA.@time C = matmul(A, B, 10)
 
 println("CPU TIME")
 @time C_ref = A*B
 @test all(C_ref .== C)
 
+end
 
 # println("GPU for $N x $N")
 
