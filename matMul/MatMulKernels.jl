@@ -32,6 +32,8 @@ function naive_flatten_kernel(C, CC, mod)
     row = (blockIdx().x-1) * blockDim().x + threadIdx().x
     col = (blockIdx().y-1) * blockDim().y + threadIdx().y
 
+    for i=1:10
+
     total = 0
     for i = 1:2
         total += CC[row,col,i] % mod
