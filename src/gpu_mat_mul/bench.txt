@@ -1,0 +1,46 @@
+Name: NVIDIA GeForce RTX 3060
+Total Memory: 12884377600 bytes
+Capability (CUDA Version): 8.6.0
+Warp Size: 32 threads
+
+12-element BenchmarkTools.BenchmarkGroup:
+  tags: []
+  ("⊞", "Float64", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:
+          tags: []
+          "cpu" => Trial(264.923 ms)
+          "gpu" => Trial(72.839 ms)
+  ("⊡", "Float32", "[1000 1000; 1000 1000]", 101) => 2-element BenchmarkTools.BenchmarkGroup:  
+          tags: []
+          "cpu" => Trial(260.206 ms)
+          "gpu" => Trial(11.584 ms)
+  ("⊟", "Float64", "[1000 1000; 1000 1000]", 101) => 2-element BenchmarkTools.BenchmarkGroup:          tags: []
+          "cpu" => Trial(260.335 ms)
+          "gpu" => Trial(17.873 ms)
+  ("⊟", "Float64", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:  
+          tags: []
+          "cpu" => Trial(265.738 ms)
+          "gpu" => Trial(17.895 ms)
+  ("⊞", "Float32", "[1000 1000; 1000 1000]", 101) => 2-element BenchmarkTools.BenchmarkGroup:
+          tags: []
+          "cpu" => Trial(262.082 ms)
+          "gpu" => Trial(58.274 ms)
+  ("⊡", "Float64", "[1000 1000; 1000 1000]", 101) => 2-element BenchmarkTools.BenchmarkGroup:
+          tags: []
+          "cpu" => Trial(263.630 ms)
+          "gpu" => Trial(11.370 ms)
+  ("⊡", "Float64", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:  
+          tags: []
+          "cpu" => Trial(268.653 ms)
+          "gpu" => Trial(11.781 ms)
+  ("⊞", "Float64", "[1000 1000; 1000 1000]", 101) => 2-element BenchmarkTools.BenchmarkGroup:
+          tags: []
+          "cpu" => Trial(260.492 ms)
+          "gpu" => Trial(71.034 ms)
+  ("⊟", "Float32", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:  
+          tags: []
+          "cpu" => Trial(260.804 ms)
+          "gpu" => Trial(11.440 ms)
+  ("⊞", "Float32", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:  
+          tags: []
+          "cpu" => Trial(260.397 ms)
+          "gpu" => Trial(58.028 ms)
