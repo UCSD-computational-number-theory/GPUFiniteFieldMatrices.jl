@@ -1,4 +1,4 @@
-using CUDA, BenchmarkTools, LinearAlgebra, Test
+using CUDA, BenchmarkTools, LinearAlgebra, Test, Serialization
 include("mat_mul_hybrid.jl")
 include("mat_mul_flops.jl")
 
@@ -139,6 +139,8 @@ Beginning Test for:
 """
         )
 
+        try
+
         suite[regime, type, size, P] = BenchmarkGroup()
 
         # suite[regime, type, size, P]["allocA"] = @benchmark begin
@@ -170,12 +172,24 @@ Beginning Test for:
 
         println("CPU done")
 
+        catch
+            
+        println("An error had occurred!")
+
+        end
+
+        println("")
+
+        println(suite[regime, type, size, P])
+
         println("")
 
         # catch
         #     println("Something went wrong with: $regime, $type, $size")
         # end
     end
+
+    f = serialize("suite.dat", suite)
 
     return suite
 end 

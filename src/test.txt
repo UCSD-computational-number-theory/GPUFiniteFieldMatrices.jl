@@ -1,0 +1,16 @@
+  ("⊞", "Float64", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:
+	  tags: []
+	  "cpu" => Trial(283.059 ms)
+	  "gpu" => Trial(71.072 ms)
+  ("⊡", "Float64", "[5000 5000; 5000 5000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:
+	  tags: []
+	  "cpu" => Trial(38.024 s)
+	  "gpu" => Trial(3.311 s)
+  ("⊟", "Float64", "[1000 1000; 1000 1000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:
+	  tags: []
+	  "cpu" => Trial(277.902 ms)
+	  "gpu" => Trial(17.958 ms)
+  ("⊞", "Float64", "[5000 5000; 5000 5000]", 9) => 2-element BenchmarkTools.BenchmarkGroup:
+	  tags: []
+	  "cpu" => Trial(38.055 s)
+	  "gpu" => Trial(8.812 s)

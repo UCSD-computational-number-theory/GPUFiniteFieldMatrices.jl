@@ -1,3 +1,5 @@
+using LinearAlgebra
+
 """
     count_flops(A::Matrix,B::Matrix)
 
@@ -37,11 +39,11 @@ function count_Flops(A,B,TILE_WIDTH,MAX_OPS)
     # If MAX_OPS is larger than each tile
     elseif MAX_OPS >= TILE_WIDTH
         # Then we mod at the end of the tile
-        return m * k * (2n - 1 + (floor(n,TILE_WIDTH)+1) * MOD_OPS)
+        return m * k * (2n - 1 + (floor(n/TILE_WIDTH)+1) * MOD_OPS)
     # Otherwise MAX_OPS can happen multiple times a tile
     else
         # So each element, in each tile (there are floor(n,TILE_WIDTH)+1 tiles)
         # is modded floor(TILE_WDITH,MAX_OPS) number of times.
-        return m * k * (2n - 1 + (floor(n,TILE_WIDTH)+1) * MOD_OPS * (floor(TILE_WIDTH,MAX_OPS)+1))
+        return m * k * (2n - 1 + (floor(n/TILE_WIDTH)+1) * MOD_OPS * (floor(TILE_WIDTH,MAX_OPS)+1))
     end
 end
