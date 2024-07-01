@@ -1,5 +1,6 @@
 using CUDA, BenchmarkTools, LinearAlgebra, Test
 include("mat_mul_hybrid.jl")
+include("mat_mul_flops.jl")
 
 """
 Function to format benchmark
@@ -118,35 +119,66 @@ function mat_mul_benchmark_all(regimes, types, sizes, P)
     gpu_info()
     
     # Primer and sanity check
-    DEFAULT_SIZE = 5000
-    A = rand(1:(P-1), DEFAULT_SIZE, DEFAULT_SIZE)
-    B = rand(1:(P-1), DEFAULT_SIZE, DEFAULT_SIZE)
-    mat_mul_primer(A, B, P)
+    DEFAULT_SIZE = 1000
+    A = rand(1:(9-1), DEFAULT_SIZE, DEFAULT_SIZE)
+    B = rand(1:(9-1), DEFAULT_SIZE, DEFAULT_SIZE)
+    mat_mul_primer(A, B, 9)
 
     # Define group of benchmarks
     suite = BenchmarkGroup()
 
-    for (regime, type, size) in IterTools.product(regimes, types, sizes)
+    for (regime, type, size, P) in IterTools.product(regimes, types, sizes, P)
 
-        println(@benchmark begin
-            A = rand(1:($P-1), $size[1,1], $size[1,2])
-        end)
+        println(
+"""
+Beginning Test for:
+    Regime: $regime
+    Type $type
+    Size: $size
+    N: $P
+"""
+        )
 
-        println(@benchmark begin
-            B = rand(1:($P-1), $size[2,1], $size[2,2])
-        end)
+        suite[regime, type, size, P] = BenchmarkGroup()
 
-        println(@benchmark begin
+        # suite[regime, type, size, P]["allocA"] = @benchmark begin
+        #     A = rand(1:($P-1), $size[1,1], $size[1,2])
+        # end
+
+        # println("Alloc A done")
+
+        # suite[regime, type, size, P]["allocB"] = @benchmark begin
+        #     B = rand(1:($P-1), $size[2,1], $size[2,2])
+        # end
+
+        # println("Alloc B done")
+
+        A = rand(1:(P-1), size[1,1], size[1,2])
+        B = rand(1:(P-1), size[2,1], size[2,2])
+
+        println("Allocs done")
+
+        suite[regime, type, size, P]["gpu"] = @benchmark begin
             C = CUDA.@sync mat_mul_gpu($A, $B, $P, $regime, $type)
-        end)
+        end
 
-        println(@benchmark begin
+        println("GPU done")
+
+        suite[regime, type, size, P]["cpu"] = @benchmark begin
             C = CUDA.@sync mat_mul_cpu($A, $B, $P)
-        end)
+        end
+
+        println("CPU done")
+
+        println("")
+
+        # catch
+        #     println("Something went wrong with: $regime, $type, $size")
+        # end
     end
 
-    return
-end
+    return suite
+end 
 
 """
 Run program once to remove compilation time
@@ -185,7 +217,7 @@ function gpu_info()
     # Print device properties
     println("Name: $name")
     println("Total Memory: $memory bytes")
-    println("Capability: $capability")
+    println("Capability (CUDA Version): $capability")
     println("Warp Size: $warpSize threads")
 
 end

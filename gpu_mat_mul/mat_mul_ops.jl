@@ -1,12 +1,14 @@
 using CUDA, LinearAlgebra
 
-function mat_mul_no_ops(d_A, d_B, d_C, P, TILE_WIDTH, TYPE, MAX_OPS)
-    """
-    GPU MatMul with counting number of operations,
-    so MAX_OPS > TILE_WIDTH.
-    Note that TILE_WDITH must be a constant variable.
-    """
+const global TILE_WIDTH = 25
 
+"""
+    GPU MatMul with counting number of operations,
+    so MAX_OPS <= TILE_WIDTH.
+    Note that TILE_WDITH must be a constant variable.
+"""
+function mat_mul_ops(d_A, d_B, d_C, P, width, TYPE, MAX_OPS)
+    
     # Define shared matrices for storage
     sharedA = CUDA.CuStaticSharedArray(
         TYPE, (TILE_WIDTH, TILE_WIDTH)

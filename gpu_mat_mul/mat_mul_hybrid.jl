@@ -1,11 +1,11 @@
-using CUDA, LinearAlgebra
+using CUDA, LinearAlgebra, IterTools
 include("mat_mul_plain.jl")
 include("mat_mul_no_ops.jl")
 include("mat_mul_ops.jl")
 
 const global TILE_WIDTH = 25
 
-function mat_mul_gpu(A, B, P, REGIME=-1, type=Float64, tile_width=25)
+function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     """
     Hybrid matmul algorithm that incorporates three different regimes:
 
@@ -64,7 +64,51 @@ function mat_mul_gpu(A, B, P, REGIME=-1, type=Float64, tile_width=25)
         error("Invalid tile width")
     end
 
+    # type = Float64 <: AbstractFloat
+    # Move to its own function
+
     # Compute the MAX_OPS
+    MAX_OPS = find_max_ops(type, N)
+
+    # Determine regiment to use if not hardcoded
+    if REGIME == "⊠"
+        if MAX_OPS >= A_cols # equal to B_rows
+            REGIME = "⊡"
+        elseif MAX_OPS > TILE_WIDTH
+            REGIME = "⊟"
+        else
+            REGIME = "⊞"
+        end
+    end
+
+    # Compute based on regime
+    if REGIME == "⊡"
+        return Array(mat_mul_plain(d_A,d_B,N))[1:A_rows, 1:B_cols]
+
+    elseif REGIME == "⊟"
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_no_ops(d_A,d_B,d_C,N,A_padded_rows,type)
+        return Array(d_C)[1:A_rows, 1:B_cols]
+
+    elseif REGIME == "⊞"
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,N,A_padded_rows,type,MAX_OPS)
+        return Array(d_C)[1:A_rows, 1:B_cols]
+
+    else
+        error("Input regime is invalid.")
+    end
+
+    return 
+end
+
+"""
+    find_max_ops(type, N)
+
+Returns the maximum number of operations before a modulus is necessary given a datatype type and modulus N.
+
+Supports all basic Julia Float, Int, and UInt types.
+"""
+function find_max_ops(type, N)
+
     if occursin("Float", string(type))
         bits = match(r"\d+", string(type))
         d = Dict("64"=>51, "32"=>22, "16"=>9)
@@ -84,34 +128,5 @@ function mat_mul_gpu(A, B, P, REGIME=-1, type=Float64, tile_width=25)
         error("Input type is not recognized.")
     end
 
-    MAX_OPS = floor((2^bits-1)/P^2) - 1
-
-    # Determine regiment to use if not hardcoded
-    if REGIME == -1
-        if MAX_OPS >= A_rows && MAX_OPS >= B_cols
-            REGIME = 1
-        elseif MAX_OPS > TILE_WIDTH
-            REGIME = 2
-        else
-            REGIME = 3
-        end
-    end
-
-    # Compute based on regime
-    if REGIME == 1
-        return Array(mat_mul_plain(d_A,d_B,P))[1:A_rows, 1:B_cols]
-
-    elseif REGIME == 2
-        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,P,TILE_WIDTH,type,MAX_OPS)
-        return Array(d_C)[1:A_rows, 1:B_cols]
-
-    elseif REGIME == 3
-        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,P,TILE_WIDTH,type)
-        return Array(d_C)[1:A_rows, 1:B_cols]
-
-    else
-        error("Input regime is invalid.")
-    end
-
-    return 
+    return floor((2^bits-1)/N^2) - 1
 end

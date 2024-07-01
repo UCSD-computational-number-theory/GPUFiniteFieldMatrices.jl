@@ -1,9 +1,11 @@
 using CUDA, LinearAlgebra
 
-function mat_mul_no_ops(d_A, d_B, d_C, P, TILE_WIDTH, TYPE)
+const global TILE_WIDTH = 25
+
+function mat_mul_no_ops(d_A, d_B, d_C, P, width, TYPE)
     """
     GPU MatMul without counting number of operations,
-    so MAX_OPS <= TILE_WIDTH.
+    so MAX_OPS > TILE_WIDTH.
     Note that TILE_WDITH must be a constant variable.
     """
 
