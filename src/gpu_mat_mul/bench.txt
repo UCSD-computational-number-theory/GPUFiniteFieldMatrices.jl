@@ -1,0 +1,4 @@
+Name: NVIDIA GeForce RTX 3060
+Total Memory: 12884377600 bytes
+Capability (CUDA Version): 8.6.0
+Warp Size: 32 threads
