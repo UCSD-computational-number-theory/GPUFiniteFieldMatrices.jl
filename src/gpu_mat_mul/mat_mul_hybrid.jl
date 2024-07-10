@@ -64,9 +64,6 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
         error("Invalid tile width")
     end
 
-    # type = Float64 <: AbstractFloat
-    # Move to its own function
-
     # Compute the MAX_OPS
     MAX_OPS = find_max_ops(type, N)
 
