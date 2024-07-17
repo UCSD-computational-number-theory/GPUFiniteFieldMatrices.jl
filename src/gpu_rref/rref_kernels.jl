@@ -24,8 +24,8 @@ function rref_gpu(A, P)
     copyto!(d_A, d_A_inds, A, A_inds)
 
     # For every row
-    max_dim = max(A_rows,A_cols)
-    for k = 1:max_dim
+    min_dim = min(A_rows,A_cols)
+    for k = 1:min_dim
         # println("k: $k")
         # println(d_A)
 
@@ -37,6 +37,7 @@ function rref_gpu(A, P)
 
         # Move p_row to the kth row
         swap(d_A, k, p_row)
+        # Also swap_and_mod the pivot row
 
         # println("SWAP DONE")
         # println(d_A)
@@ -44,6 +45,8 @@ function rref_gpu(A, P)
         # Normalize the p_row
         p_inv = mod_inv(p, P)
         @cuda threads=(TILE_WIDTH) blocks=(div(A_padded_rows,TILE_WIDTH)) normalize(d_A, k, p_inv, P, A_rows)
+        # normalize pivot column return/alloc mult. inv. array
+        # put mult inv inside of d_A itself?
 
         # println("NORMALIZE DONE")
         # println(d_A)
@@ -53,6 +56,7 @@ function rref_gpu(A, P)
         blocks_y = div(A_cols-k,TILE_WIDTH)+1
         shared_mem_size = sizeof(TYPE) * TILE_WIDTH * (blocks_x*2 + blocks_y)
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(blocks_x,blocks_y) shmem=shared_mem_size update_sub_matrix(d_A, k, P, blocks_x, blocks_y)
+        # Use the mult. inv. to update rows below pivot
 
         # println("UPDATE DONE")
         # println(d_A)
@@ -77,7 +81,11 @@ function find_pivot(d_A, k, A_rows)
     # println(typeof(range))
     range = range[k:A_rows]
     p_row = argmax(range) + k - 1
-    
+
+    # Ideas:
+    # use CUDA.jl mapreduce()
+    # Write our own kernel
+
     return maximum(range), p_row, k
 end
 
@@ -87,6 +95,9 @@ end
 Swaps the kth row and the p_row row on the GPU.
 """
 function swap(d_A, k, p_row)
+
+    # see other implementations and compare
+    # mod pivot row as well.
 
     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
 
@@ -114,9 +125,15 @@ function mod_inv(p, P)
         rem, new_rem = new_rem, rem - quotient * new_rem
     end
 
+    # TODO Check stock implementation and what CUDA.jl does
+    # If worse, consider PR
+
     if inv < 0
         inv += P
     end
+
+    # Consider doing longer no-if Version
+    # TODO compare
 
     return inv
 end
@@ -148,6 +165,29 @@ function normalize(d_A, k, p_inv, P, A_rows)
     return
 end
 
+function update_sub_matrix_col()
+    # Each thread does a whole column
+
+    p_row_shared = ...
+    mult_shared = ...
+
+    # load mult inv into local variable
+
+    CUDA.sync_threads()
+
+    # loop though 
+    for i=k:A_rows/TILE_WIDTH
+
+        # Load a single elem from d_A[:,k] into some shared mem
+
+        CUDA.sync_threads()
+
+        
+
+    end
+
+end
+
 """
     updateSubMatrix(d_A::CUDA.CuArray,k::Int,P::Int,A_rows::Int,A_cols::Int)
 
@@ -159,6 +199,9 @@ function update_sub_matrix(d_A, k, P, block_x, block_y)
     p_row_shared = CUDA.CuDynamicSharedArray(TYPE, block_x*TILE_WIDTH)
     p_col_shared = CUDA.CuDynamicSharedArray(TYPE, block_y*TILE_WIDTH)
     mult_shared = CUDA.CuDynamicSharedArray(TYPE, block_y*TILE_WIDTH)
+
+    # TODO only need row shared, mult inv inside of d_A
+    # Why use Dynamic? Make Shared mem size of tile...
 
     tx = threadIdx().x
     ty = threadIdx().y
@@ -201,6 +244,8 @@ function update_sub_matrix(d_A, k, P, block_x, block_y)
 
     # We want to calculate, for row and col, 
     # d_A[row,col] = d_A[row,col] - p_row_shared[tx]*mult[ty] mod P
+
+    # TODO 
 
     result = d_A[k+row,k+col] - p_row_shared[col]*mult_shared[row]
 
