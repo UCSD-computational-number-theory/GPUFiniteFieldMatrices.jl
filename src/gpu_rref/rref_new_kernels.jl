@@ -1,13 +1,13 @@
 using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 4
+const global TILE_WIDTH = 32
 const global TYPE = Float32
 
 function rref_gpu(A, P)
 
     A_rows, A_cols = size(A)
-    A_padded_rows = ceil(Int, A_rows / TILE_WIDTH) * TILE_WIDTH
-    A_padded_cols = ceil(Int, A_cols / TILE_WIDTH) * TILE_WIDTH 
+    A_padded_rows = (ceil(Int, A_rows / TILE_WIDTH)+1) * TILE_WIDTH
+    A_padded_cols = (ceil(Int, A_cols / TILE_WIDTH)+1) * TILE_WIDTH 
 
     d_A = CUDA.CuArray{Int}(undef, (A_padded_rows+TILE_WIDTH, A_padded_cols+TILE_WIDTH))
     
@@ -20,33 +20,41 @@ function rref_gpu(A, P)
 
     while row <= A_rows && col <= A_cols
 
-        p = find_pivot(d_A, A_rows, row, col)
+        # println("$row $col")
+
+        k = find_pivot(d_A, A_rows, row, col)
+        CUDA.@allowscalar p = 1
         if p == 0
             col += 1
             continue
         end
 
         p_inv = mod_inv(p, P)
-        swap_and_mod(d_A, row, inv)
+        swap_and_mod(d_A, k, row, p_inv, P)
 
-        @cuda threads=(TILE_WIDTH) blocks=(div(A_padded_rows-row,TILE_WDITH)) normalize(d_A, A_rows, col, p_inv, P)
+        normalize_broadcast(d_A, col, p_inv, P)
 
-        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A_padded_rows-rows,TILE_WIDTH),div(A_padded_cols-cols,TILE_WIDTH)) update_sub_matrix_col(d_A, row, col, P)
+        @cuda threads=(TILE_WIDTH) blocks=(div(A_rows,TILE_WIDTH)) update_sub_matrix_row(d_A, row, col, div(A_cols,TILE_WIDTH), P)
 
         row += 1
         col += 1
 
     end
 
-    return Array(d_A)[1:A_rows,1:A_cols]
+    # A = Array(d_A)
+
+    return
 end
 
 function lu_gpu(A, P)
 
+    # Find padded dimensions
     A_rows, A_cols = size(A)
     A_padded_rows = ceil(Int, A_rows / TILE_WIDTH) * TILE_WIDTH
     A_padded_cols = ceil(Int, A_cols / TILE_WIDTH) * TILE_WIDTH 
 
+    # Deifne gpu matrices
+    # We add another TILE_WDITH for the reduction of the last few rows
     d_A = CUDA.CuArray{Int}(undef, (A_padded_rows+TILE_WIDTH, A_padded_cols+TILE_WIDTH))
     d_L = CUDA.CuArray{Int}(Matrix{Int}(I,3,3))
     Perm = 1:A_padded_rows
@@ -58,7 +66,7 @@ function lu_gpu(A, P)
     row = 1
     col = 1
 
-    while row <= A_rows && col 
+    while row <= A_rows && col <= A_cols
 
         p = find_pivot(d_A, A_rows, row, col)
         if p == 0
@@ -69,7 +77,7 @@ function lu_gpu(A, P)
         p_inv = mod_inv(p, P)
         swap_and_mod_lu(d_A, row, inv, Perm)
 
-        @cuda threads=(TILE_WIDTH) blocks=(div(A_padded_rows-row,TILE_WDITH)) normalize_lu(d_A, A_rows, col, p_inv, P, Perm)
+        @cuda threads=(TILE_WIDTH) blocks=(div(A_padded_rows-row,TILE_WDITH)) normalize_lu(d_A, A_rows, col, p_inv, P, d_L)
 
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A_padded_rows-row,TILE_WIDTH),div(A_padded_cols-col,TILE_WIDTH)) update_sub_matrix_col(d_A, row, col, P)
 
@@ -82,7 +90,25 @@ function lu_gpu(A, P)
 end
 
 function find_pivot(d_A, A_rows, row, col)
-    return argmax(d_A[row:A_rows,col])
+    # return argmax(d_A[row:A_rows,col])
+    return row
+end
+
+function find_pivot_new(d_A, A_rows, row, col)
+    return findfirst(x -> x != 0, d_A[row:A_rows,col])
+end
+
+function find_pivot_custom(d_A, A_rows, row, col, res)
+    tidx = threadIdx().x
+    bidx = blockIdx().x
+    idx = tid + (bid - 1) * blockDim().x
+
+    if arr[idx,col] != 0
+        res[1] = idx
+        return
+    end
+
+    return
 end
 
 function mod_inv(p, P)
@@ -134,23 +160,23 @@ function swap_and_mod_threaded(d_A, k, p_row, inv)
     return
 end
 
-function swap_and_mod(d_A, p_row, inv)
+function swap_and_mod(d_A, k, p_row, inv, P)
 
     # swap k and p_row
     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
 
     # normalize p_row
-    d_A[p_row,:] = (inv * d_A[p_row]) % P
+    d_A[p_row,:] = (d_A[p_row,:] .* inv) .% P
 
     return
 end
 
-function swap_and_mod_lu(d_A, p_row, inv, Perm)
+function swap_and_mod_lu(d_A, k, p_row, inv, P, Perm)
 
     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
-    Perm[k], Perm[p_row] = Perm[p_row], Perm[k]
+    CUDA.@allowscalar Perm[k], Perm[p_row] = Perm[p_row], Perm[k]
 
-    d_A[p_row, :] = (inv * d_A[p_row]) % P 
+    d_A[p_row,:] = (inv * d_A[p_row,:]) .% P 
     
     return
 end
@@ -165,7 +191,6 @@ function normalize(d_A, A_rows, col, p_inv, P)
         d_A[i,col] = (d_A[i,col] * p_inv) % P
         i += 1
     end
-    CUDA.sync_threads()
     
     return
 end
@@ -182,53 +207,76 @@ function normalize_lu(d_A, A_rows, col, p_inv, P, d_L)
         d_L[i,col] = res
         i += 1
     end
-    CUDA.sync_threads()
     
     return
 end
 
-function update_sub_matrix_row(d_A, p_row, p_col, P)
+function normalize_broadcast(d_A, col, p_inv, P)
 
-    p_row_shared = CUDA.CuStaticSharedArray(TYPE, TILE_WIDTH)
-
-    idx = threadIdx().x
-    row = p_row + (blockIdx().x * TILE_WIDTH) + idx
-
-    inv = d_A[row,p_col]
-    d_A[row,p_col] = 0
-
-    p_row_shared[idx] = d_A[p_row, p_col+idx]
-    CUDA.sync_threads()
-    
-    i = p_col + 1
-    while i <= A_cols
-        d_A[row,i] = (d_A[row,i] - p_row_shared[i] * inv) % P
-        i += 1
-    end
-    CUDA.sync_threads()
+    d_A[:,col] = (d_A[:,col] * p_inv) .% P
 
     return
 end
 
-function update_sub_matrix_col(d_A, p_row, p_col, P)
+function normalize_lu_broadcast(d_A, col, p_inv, P, d_L)
 
-    p_col_shared = CUDA.CuStaticSharedArray(TYPE, TILE_WIDTH)
+    res = (d_A[:,col] * p_inv) .% P
+    d_A[:,col] = res
+    d_L[:,col] = res
 
-    idx = threadIdx().x
-    col = p_row + (blockIdx().x * TILE_WIDTH) + idx
+    return
+end
 
-    p_val = d_A[p_row, col]
+function update_sub_matrix_row(d_A, p_row, p_col, bound, P)
 
-    p_col_shared[idx] = d_A[p_row+idx, p_col]
-    d_A[p_row+idx, p_col] = 0
-    CUDA.sync_threads()
-    
-    i = p_row + 1
-    while i <= A_cols
-        d_A[i,col] = (d_A[i,col] - p_col_shared[i] * p_val) % P
-        i += 1
+    tid = threadIdx().x
+    bid = blockIdx().x
+    idx = tid + (bid - 1) * blockDim().x
+
+    row_inv = d_A[p_row+idx,p_col]
+    shared_row = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
+
+    m = 0
+    while m < bound
+        shared_row[tid] = d_A[p_row,p_col + tid + m*TILE_WIDTH]
+        d_A[p_row + idx,p_col + tid + m*TILE_WIDTH] = (d_A[p_row + idx,p_col + tid + m*TILE_WIDTH] + shared_row[tid] * row_inv) % P
+        m += 1
     end
-    CUDA.sync_threads()
+    d_A[p_row+idx,p_col] = 0
+
+    return
+end
+
+function update_sub_matrix_col(d_A, p_row, p_col, bound, P)
+    
+    tid = threadIdx().x
+    bid = blockIdx().x
+    idx = tid + (bid - 1) * blockDim().x
+
+    row_val = d_A[p_row,p_col+idx]
+    shared_col = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
+
+    m = 0
+    while m < bound
+        shared_col[tid] = d_A[p_row + tid + m*TILE_WIDTH,p_col]
+        d_A[p_row + tid + m*TILE_WIDTH,p_col + idx] = (d_A[p_row + tid + m*TILE_WIDTH,p_col + idx] + shared_col[tid] * row_val) % P
+        m += 1
+    end
+    d_A[p_row+idx,p_col] = 0
+
+    return
+end
+
+function update_sub_matrix_elem(d_A, p_row, p_col, P)
+
+    tidx = threadIdx().x
+    bidx = blockIdx().x
+    tidy = threadIdx().y
+    bidy = blockIdx().y
+    idx = tidx + (bidx - 1) * blockDim().x
+    idy = tidy + (bidy - 1) * blockDim().y
+
+    d_A[p_row + idy, p_col + idx] = (d_A[p_row + idy, p_col + idx] + d_A[p_row, p_col + idx] * d_A[p_row + idy, p_col]) % P
 
     return
 end
@@ -244,7 +292,42 @@ function update_sub_matrix_square(d_A, p_row, p_col, P)
     col = (bx-1)*TILE_WIDTH + idx
 
     d_A[row,col] = (d_A[row,col] - d_A[row,p_col] * d_A[p_row,col]) % P
-    CUDA.sync_threads()
+    # CUDA.sync_threads()
+
+    return
+end
+
+function update_sub_matrix_broadcast(d_A, A_rows, p_row, p_col, P)
+
+    for row=p_row:A_rows
+        CUDA.@allowscalar d_A[row,:] = (d_A[row,:] + d_A[p_row,:] .* d_A[row, p_col]) .% P
+    end
+
+    return
+end
+
+function update_sub_matrix_broadcast2(d_A, A_rows, p_row, p_col, P)
+
+    temp = zeros(A_rows)
+    temp .= Array(d_A[:, p_col])
+
+    for row=p_row:A_rows
+        CUDA.@allowscalar d_A[row,:] = (d_A[row,:] + d_A[p_row,:] .* temp[row]) .% P
+    end
+
+    return
+end
+
+function update_sub_matrix_broadcast4(d_A, A_rows, p_row, p_col, P)
+
+    temp = zeros(A_rows-p_row+1,1)
+    temp_inds = CartesianIndices((A_rows,1))
+    d_A_inds = CartesianIndices((p_row:A_rows,p_col))
+    CUDA.@allowscalar copyto!(d_A, d_A_inds, temp, temp_inds)
+
+    for row=p_row:A_rows
+        d_A[row,:] = (d_A[row,:] + d_A[p_row,:] .* temp[row-p_row+1]) .% P
+    end
 
     return
 end
