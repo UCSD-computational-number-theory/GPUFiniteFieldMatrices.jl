@@ -165,28 +165,28 @@ function normalize(d_A, k, p_inv, P, A_rows)
     return
 end
 
-function update_sub_matrix_col()
-    # Each thread does a whole column
-
-    p_row_shared = ...
-    mult_shared = ...
-
-    # load mult inv into local variable
-
-    CUDA.sync_threads()
-
-    # loop though 
-    for i=k:A_rows/TILE_WIDTH
-
-        # Load a single elem from d_A[:,k] into some shared mem
-
-        CUDA.sync_threads()
-
-        
-
-    end
-
-end
+#function update_sub_matrix_col()
+#    # Each thread does a whole column
+#
+#    p_row_shared = ...
+#    mult_shared = ...
+#
+#    # load mult inv into local variable
+#
+#    CUDA.sync_threads()
+#
+#    # loop though 
+#    for i=k:A_rows/TILE_WIDTH
+#
+#        # Load a single elem from d_A[:,k] into some shared mem
+#
+#        CUDA.sync_threads()
+#
+#        
+#
+#    end
+#
+#end
 
 """
     updateSubMatrix(d_A::CUDA.CuArray,k::Int,P::Int,A_rows::Int,A_cols::Int)

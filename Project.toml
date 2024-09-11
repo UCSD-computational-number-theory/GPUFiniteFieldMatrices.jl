@@ -1,2 +1,7 @@
+name = "GPUFiniteFieldMatrices"
+uuid = "465031f1-b347-4f72-85f6-baf667cdf853"
+
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
