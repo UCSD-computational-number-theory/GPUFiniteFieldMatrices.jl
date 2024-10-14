@@ -100,6 +100,7 @@ end
 
 function find_pivot(d_A, A_rows, row, col)
     # return argmax(d_A[row:A_rows,col])
+    #TODO move back to original after testing
     return row
 end
 
