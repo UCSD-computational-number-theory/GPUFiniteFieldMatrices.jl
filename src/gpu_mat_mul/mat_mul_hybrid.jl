@@ -3,7 +3,7 @@ include("mat_mul_plain.jl")
 include("mat_mul_no_ops.jl")
 include("mat_mul_ops.jl")
 
-const global TILE_WIDTH = 25
+const global TILE_WIDTH = 32
 
 function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     """
@@ -20,8 +20,8 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     where 1 is the first case, and 3 is the last case.
 
     The optional argument type determines the datatype used.
-    By default, type is Float64 or Int52. 
-    For reference, Float32 is Int23; Float16 is Int10.
+    By default, type is Float64 or Int53. 
+    For reference, Float32 is Int24; Float16 is Int10 (Int11?).
     """
 
     # Define rows and cols of matrices
@@ -37,6 +37,7 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
         ) 
     end
 
+
     # Calculate number of tiles for each dimensions
     # Note that A_padded_cols = B_padded_rows by matrix multiplication
     A_padded_rows = ceil(Int, A_rows / TILE_WIDTH) * TILE_WIDTH
@@ -50,14 +51,15 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     d_Binds = CartesianIndices((1:B_rows,1:B_cols))
 
     # Define CUDA arrays of appropriate size
+    t = eltype(A)
     # Note that undef makes all values default to 0
-    d_A = CUDA.CuArray{Int}(undef, (A_padded_rows, A_padded_cols))
-    d_B = CUDA.CuArray{Int}(undef, (A_padded_cols, B_padded_cols))
-    d_C = CUDA.CuArray{Int}(undef, (A_padded_rows, B_padded_cols))
+    d_A = CUDA.CuArray{t}(undef, (A_padded_rows, A_padded_cols))
+    d_B = CUDA.CuArray{t}(undef, (A_padded_cols, B_padded_cols))
+    d_C = CUDA.CuArray{t}(undef, (A_padded_rows, B_padded_cols))
 
     # Move the matrices from CPU to GPU CUDA Arrays
-    copyto!(A, Ainds, d_A, d_Ainds)
-    copyto!(B, Binds, d_B, d_Binds)
+    copyto!(d_A, d_Ainds, A, Ainds)
+    copyto!(d_B, d_Binds, B, Binds)
 
     # Hardcode tile width unles inputted
     if tile_width < 1
@@ -77,18 +79,20 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
             REGIME = "⊞"
         end
     end
+    REGIME = "⊡"
 
     # Compute based on regime
     if REGIME == "⊡"
-        return Array(mat_mul_plain(d_A,d_B,N))[1:A_rows, 1:B_cols]
+        return mat_mul_plain(d_A,d_B,N)[1:A_rows, 1:B_cols]
 
     elseif REGIME == "⊟"
+        println("running the algorithm")
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_no_ops(d_A,d_B,d_C,N,A_padded_rows,type)
-        return Array(d_C)[1:A_rows, 1:B_cols]
+        return d_C[1:A_rows, 1:B_cols]
 
     elseif REGIME == "⊞"
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,N,A_padded_rows,type,MAX_OPS)
-        return Array(d_C)[1:A_rows, 1:B_cols]
+        return d_C[1:A_rows, 1:B_cols]
 
     else
         error("Input regime is invalid.")
