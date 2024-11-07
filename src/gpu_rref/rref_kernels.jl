@@ -30,7 +30,7 @@ function rref_gpu(A, P)
         # println(d_A)
 
         # Find pivot and its p_row and p_col
-        p, p_row, p_col = find_pivot(d_A, k, A_rows)
+        CUDA.@allowscalar p, p_row, p_col = find_pivot(d_A, k, A_rows)
 
         # println("PIVOT DONE")
         # println(d_A)
