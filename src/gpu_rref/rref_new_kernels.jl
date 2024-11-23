@@ -1,6 +1,6 @@
 using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 32
+const global TILE_WIDTH = 2
 const global TYPE = Float32
 const global DEBUG = false
 
@@ -142,6 +142,8 @@ function plup_gpu(A, P)
     col = 1
     Perm_col_idx = A_cols
 
+    d_A = d_A .% P
+
     while row <= A_rows && col <= A_cols
         if DEBUG
             writedlm("checkpoints/dA/plup_dA_$row.csv", Array(d_A), ',')
@@ -150,7 +152,7 @@ function plup_gpu(A, P)
             writedlm("checkpoints/Pcols/plup_Prows_$row.csv", Array(Perm_cols), ',')
         end
 
-        if find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
+        while find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
             if DEBUG
                 println("Swapping columns")
                 println("Perm_col_idx: ", Perm_col_idx)
@@ -167,6 +169,13 @@ function plup_gpu(A, P)
             println("d_A: ", d_A)
         end
 
+        if p == 0
+            d_L[row:end,col] .= 1
+            d_L[row+1:end,col] .= 0
+            col += 1
+            continue
+        end
+
         p_inv = mod_inv(p, P)
         swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, P, Perm_rows)
         if DEBUG
@@ -176,7 +185,7 @@ function plup_gpu(A, P)
             println("d_L: ", d_L)
         end
 
-        normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p_inv, P)
+        normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p, P)
         if DEBUG
             println("Normalize")
             println("d_L: ", d_L)
@@ -202,7 +211,7 @@ end
 
 function find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
     CUDA.allowscalar() do
-        max_val = maximum(Array(d_A[row:A_rows,col]))
+        max_val = maximum(Array(d_A[row:A_rows,col]))   
         if max_val == 0
             d_A[:,col], d_A[:,Perm_col_idx] = d_A[:,Perm_col_idx], d_A[:,col]
             Perm_cols[col], Perm_cols[Perm_col_idx] = Perm_cols[Perm_col_idx], Perm_cols[col]
@@ -350,8 +359,8 @@ function normalize_broadcast(d_A, col, p_inv, P)
     return
 end
 
-function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, P)
-    d_L[row:end,L_col] .= p_inv
+function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p, P)
+    d_L[row:end,L_col] .= p
     d_L[row+1:end,L_col] = d_A[row+1:A_rows,L_col]
     # d_L[row+1:end,L_col] = mod_inv.(Array(d_A[row+1:A_rows,L_col]), P)
     return
