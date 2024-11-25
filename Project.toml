@@ -2,6 +2,14 @@ name = "GPUFiniteFieldMatrices"
 uuid = "465031f1-b347-4f72-85f6-baf667cdf853"
 
 [deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+[compat]
+BenchmarkTools = "1.5.0"
+CSV = "0.10.15"
+DelimitedFiles = "1.9.1"
