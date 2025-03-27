@@ -107,26 +107,22 @@ If mod_N is provided, it will be used instead of A.N for the modulus.
 """
 function plup_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
-    
-    A_rows, A_cols = size(A)
     TILE_WIDTH = 32
     
-    A_padded_rows = A_rows + TILE_WIDTH + 1
-    A_padded_cols = A_cols + TILE_WIDTH + 1
+    A_padded_rows = A.data.rows
+    A_padded_cols = A.data.cols
 
     d_A = A.data.copy()
-    d_L = CUDA.CuArray{Int}(undef, (A_rows, A_rows))
-    Perm_rows = Array(1:A_rows)
-    Perm_cols = Array(1:A_cols)
+    d_L = CUDA.CuArray{Int}(undef, (A.data.rows, A.data.rows))
+    Perm_rows = Array(1:A.data.rows)
+    Perm_cols = Array(1:A.data.cols)
 
     row = 1
     col = 1
-    Perm_col_idx = A_cols
+    Perm_col_idx = A.data.cols
 
-    d_A = d_A .% N
-
-    while row <= A_rows && col <= A_cols
-        while find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
+    while row <= A.data.rows && col <= A.data.cols
+        while find_zero_col_and_swap(d_A, A.data.rows, row, col, Perm_cols, Perm_col_idx)
             Perm_col_idx -= 1
         end
 
@@ -145,19 +141,19 @@ function plup_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
         
         normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p, N)
         
-        if row == A_rows || col == A_cols
+        if row == A.data.rows || col == A.data.cols
             break
         end
 
-        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A_rows-row,TILE_WIDTH)+1,1) update_sub_matrix_row(d_A, row, col, div(A_cols-col,TILE_WIDTH), N)
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A.data.rows-row,TILE_WIDTH)+1,1) update_sub_matrix_row(d_A, row, col, div(A.data.cols-col,TILE_WIDTH), N)
         
         row += 1
         col += 1
     end
     
     # Create GPUFiniteFieldMatrix objects for the results using the new constructor
-    U = GPUFiniteFieldMatrix(d_A, A_rows, A_cols, N)
-    L = GPUFiniteFieldMatrix(d_L, A_rows, A_rows, N)
+    U = GPUFiniteFieldMatrix(d_A, A.rows, A.cols, N)
+    L = GPUFiniteFieldMatrix(d_L, A.rows, A.rows, N)
     
     return (U, L, Perm_rows, Perm_cols)
 end 

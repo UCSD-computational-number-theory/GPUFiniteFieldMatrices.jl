@@ -1,12 +1,12 @@
 using CUDA, LinearAlgebra, IterTools
+include("../gpu_mat_type/gpu_mat.jl")
 
 """
     mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, [mod_N])
 
 Matrix multiplication that works directly with GPUFiniteFieldMatrix objects.
 """
-function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing)
-    # TODO: Make version that takes in C as well
+function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing, C=nothing)
     # TODO: Put if statement to check size of C matches size of A x B.
     # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
     # Use the provided modulus if available, otherwise use A's modulus
@@ -43,12 +43,26 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
     
     d_A = A.data
     d_B = B.data
-    d_C = CUDA.CuArray{t}(undef, (A_rows, B_cols))
+    if C === nothing
+        d_C = CUDA.CuArray{t}(undef, (A_rows, B_cols))
+    else
+        if C.rows != A_rows || C.cols != B_cols
+            throw(MatrixSizeMismatchException(
+                "Output matrix C has incorrect dimensions.
+                C has $C_rows rows and $C_cols cols, but needs $A_rows rows and $B_cols cols."
+            ))
+        end
+        d_C = C.data
+    end
     
     if REGIME == "⊡"
         # Simple matrix multiplication
-        d_C = d_A * d_B
-        d_C = mod.(d_C, N)
+        if C === nothing
+            d_C = d_A * d_B
+            d_C = mod.(d_C, N)
+        else
+            C.data = mod.(d_A * d_B, N)
+        end
     elseif REGIME == "⊟"
         # Use the no_ops kernel
         @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_padded_cols, TILE_WIDTH), div(A_padded_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_padded_rows, type)
@@ -59,8 +73,11 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
         error("Invalid regime: $REGIME")
     end
     
-    # Create and return the result GPUFiniteFieldMatrix directly
-    return GPUFiniteFieldMatrix(d_C, result_rows, result_cols, N)
+    if C === nothing
+        return GPUFiniteFieldMatrix(d_C, A_rows, B_cols, N)
+    else
+        return C
+    end
 end
 
 """

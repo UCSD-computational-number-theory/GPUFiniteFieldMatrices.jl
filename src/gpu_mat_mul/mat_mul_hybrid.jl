@@ -2,10 +2,11 @@ using CUDA, LinearAlgebra, IterTools
 include("mat_mul_plain.jl")
 include("mat_mul_no_ops.jl")
 include("mat_mul_ops.jl")
+include("../gpu_mat_type/gpu_mat.jl")
 
 const global TILE_WIDTH = 32
 
-function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
+function mat_mul_gpu(A, B, N, REGIME="⊡", type=Float64, tile_width=25)
     """
     Hybrid matmul algorithm that incorporates three different regimes:
 
@@ -16,30 +17,25 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     else
         call the custom kernel with counting operations
 
-    The regime choice can be overidden using the optional argument regime,
-    where 1 is the first case, and 3 is the last case.
+    The default is to use the "⊡" regime, which is the most efficient.
+    An exception will be thrown if the matrices are too large for this regime.
 
     The optional argument type determines the datatype used.
     By default, type is Float64 or Int53. 
-    For reference, Float32 is Int24; Float16 is Int10 (Int11?).
+    For reference, Float32 is Int24; Float16 is Int10.
     """
 
-    # Define rows and cols of matrices
     A_rows, A_cols = size(A)
     B_rows,B_cols = size(B)
 
-    # Check for proper dimensions
     if A_cols != B_rows
-        error(
+        throw(MatrixSizeMismatchException(
             "Matrix dimensions do not match.
             A has $A_rows rows and $A_cols cols, 
             B has $B_rows rows and $B_cols cols."
-        ) 
+        ))
     end
 
-
-    # Calculate number of tiles for each dimensions
-    # Note that A_padded_cols = B_padded_rows by matrix multiplication
     A_padded_rows = ceil(Int, A_rows / TILE_WIDTH) * TILE_WIDTH
     A_padded_cols = ceil(Int, A_cols / TILE_WIDTH) * TILE_WIDTH
     B_padded_cols = ceil(Int, B_cols / TILE_WIDTH) * TILE_WIDTH
@@ -79,7 +75,6 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
             REGIME = "⊞"
         end
     end
-    REGIME = "⊡"
 
     # Compute based on regime
     if REGIME == "⊡"
