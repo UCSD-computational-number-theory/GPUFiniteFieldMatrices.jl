@@ -8,6 +8,9 @@ const DEFAULT_TYPE = Float32
 
 A matrix over a finite field mod N, implemented using CuArray. The internal representation
 pads to multiples of TILE_WIDTH (32) for efficient GPU computation.
+
+Note matrices over the permitted size for efficient matmul may be created, but matmul 
+will throw an exception if these matrices are multiplied.
 """
 struct GPUFiniteFieldMatrix{T}
     data::CuArray{T, 2}  # Padded CuArray data
@@ -15,14 +18,13 @@ struct GPUFiniteFieldMatrix{T}
     cols::Int            # Actual column count
     N::Int               # The modulus N
     
-    function GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int, elem_type::DataType=DEFAULT_TYPE) where T
+    """
+        GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N)
+    
+    General contructor from abstract CPU matrix.
+    """
+    function GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int, elem_type::DataType=DEFAULT_TYPE, mod=true) where T
         rows, cols = size(A)
-        
-        # Check if matrix multiplication would overflow
-        max_ops = find_max_ops(elem_type, N)
-        if rows > max_ops
-            error("Matrix size exceeds maximum safe size for N $N with $elem_type. Max row count: $max_ops")
-        end
         
         padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
         padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
@@ -36,24 +38,68 @@ struct GPUFiniteFieldMatrix{T}
         data_inds = CartesianIndices((1:rows, 1:cols))
         copyto!(data, data_inds, A, A_inds)
         
-        # TODO: Do we need this?
-        # data .= mod.(data, N)
+        if mod
+            data .= mod.(data, N)
+        end
         
         new{T}(data, rows, cols, N)
     end
-    
-    # New constructor that takes a CuArray directly without allocation
-    function GPUFiniteFieldMatrix(data::CuArray{T, 2}, rows::Int, cols::Int, N::Int) where T
-        # TODO: Check if data is already padded properly for GPU computation
-        # Right now, only our functions use this, and they all pad to 32 already.
 
-        # Check if matrix multiplication would overflow
-        max_ops = find_max_ops(T, N)
-        if rows > max_ops
-            error("Matrix size exceeds maximum safe size for N $N with $T. Max row count: $max_ops")
+    """
+        unsafe_GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N)
+
+    Wrapper constructor for results already on the GPU.
+    Unsafe as it does not pad.
+    """
+    function unsafe_GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int, elem_type::DataType=DEFAULT_TYPE, mod=false) where T
+        rows, cols = size(A)
+        
+        data = CUDA.CuArray{T}(undef, (rows, cols))
+        data .= T(0)
+        
+        A_inds = CartesianIndices(A)
+        data_inds = CartesianIndices((1:rows, 1:cols))
+        copyto!(data, data_inds, A, A_inds)
+        
+        if mod
+            data .= mod.(data, N)
         end
         
-        # Assume data is already padded properly for GPU computation
+        new{T}(data, rows, cols, N)
+    end
+
+    """
+        GPUFiniteFieldMatrix(data::CuArray, N)
+
+    Wrapper constructor for results already on the GPU.
+    """
+    function GPUFiniteFieldMatrix(data::CuArray{T, 2}, N::Int, mod=true) where T
+        if mod
+            data .= mod.(data, N)
+        end
+
+        padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
+        padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
+
+        data = CUDA.CuArray{T}(undef, (padded_rows, padded_cols))
+        data .= T(0)
+
+        
+
+        new{T}(data, rows, cols, N)
+    end
+
+    """
+        unsafe_GPUFiniteFieldMatrix(data::CuArray, N, rows, cols)
+
+    Wrapper constructor for results already on the GPU.
+    Unsafe as it does not pad.
+    """
+    function unsafe_GPUFiniteFieldMatrix(data::CuArray{T, 2}, N::Int, rows::Int, cols::Int, mod=false) where T
+        if mod
+            data .= mod.(data, N)
+        end
+
         new{T}(data, rows, cols, N)
     end
 end
@@ -90,12 +136,9 @@ end
 # Get size
 Base.size(A::GPUFiniteFieldMatrix) = (A.rows, A.cols)
 
-# Technically, these can be implemented by enabling scalar indexing
-# so I put them in, but they really should never be used.
-Base.getindex(A::GPUFiniteFieldMatrix, i::Int, j::Int) = 
-@CUDA.@allowscalar A.data[i, j]
-Base.setindex!(A::GPUFiniteFieldMatrix, v, i::Int, j::Int) = 
-@CUDA.@allowscalar A.data[i, j] = mod(v, A.N)
+# User needs to do CUDA.@allowscalar to use these
+Base.getindex(A::GPUFiniteFieldMatrix, i::Int, j::Int) = A.data[i, j]
+Base.setindex!(A::GPUFiniteFieldMatrix, v, i::Int, j::Int) = A.data[i, j] = mod(v, A.N)
 
 # Same as above; these really shouldn't be used outright.
 Base.getindex(A::GPUFiniteFieldMatrix, I::AbstractArray{Int}, J::AbstractArray{Int}) = 
@@ -119,7 +162,7 @@ end
 Base.Array(A::GPUFiniteFieldMatrix) = Array(A.data[1:A.rows, 1:A.cols])
 
 # Basic arithmetic operations with delayed reduction
-import Base: +, -, *, /
+import Base: +, -, *
 
 function +(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     if A.N != B.N
@@ -129,7 +172,7 @@ function +(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
         error("Matrix dimensions must match")
     end
     
-    result = mod.(A.data[1:A.rows, 1:A.cols] + B.data[1:B.rows, 1:B.cols], A.N)
+    result = mod.(A.data + B.data, A.N)
     
     return GPUFiniteFieldMatrix(result, A.N)
 end
@@ -142,14 +185,14 @@ function -(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
         error("Matrix dimensions must match")
     end
     
-    result = mod.(A.data[1:A.rows, 1:A.cols] - B.data[1:B.rows, 1:B.cols], A.N)
+    result = mod.(A.data - B.data, A.N)
     
     return GPUFiniteFieldMatrix(result, A.N)
 end
 
 # Scalar operations
 function +(a::Number, A::GPUFiniteFieldMatrix)
-    result = mod.(a .+ A.data[1:A.rows, 1:A.cols], A.N)
+    result = mod.(a .+ A.data, A.N)
     return GPUFiniteFieldMatrix(result, A.N)
 end
 
@@ -168,7 +211,7 @@ function -(A::GPUFiniteFieldMatrix, a::Number)
 end
 
 function *(a::Number, A::GPUFiniteFieldMatrix)
-    result = mod.(a .* A.data[1:A.rows, 1:A.cols], A.N)
+    result = mod.(a .* A.data, A.N)
     return GPUFiniteFieldMatrix(result, A.N)
 end
 
@@ -202,8 +245,8 @@ function .*(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
 end
 
 function -(A::GPUFiniteFieldMatrix)
-    result = mod.(-A.data[1:A.rows, 1:A.cols], A.N)
-    return GPUFiniteFieldMatrix(result, A.N)
+    result = mod.(-A.data, A.N)
+    GPUFiniteFieldMatrix(result, A.N)
 end
 
 function Base.:^(A::GPUFiniteFieldMatrix, n::Integer)
@@ -229,6 +272,9 @@ function Base.:^(A::GPUFiniteFieldMatrix, n::Integer)
     end
 end
 
+# TODO: is_invertible_with_inverse (see DeRham.jl)
+# TODO: PLUP --> PLUQ refactor
+
 """
     is_invertible(A::GPUFiniteFieldMatrix)
 
@@ -236,6 +282,8 @@ Checks if a matrix is invertible mod p (only works if N is prime).
 Returns a boolean indicating invertibility.
 """
 function is_invertible(A::GPUFiniteFieldMatrix)
+    # TODO: Check for prime n
+
     if A.rows != A.cols
         return false  # Only square matrices can be invertible
     end
@@ -267,24 +315,38 @@ function inverse(A::GPUFiniteFieldMatrix)
     if A.rows != A.cols
         error("Only square matrices can be inverted")
     end
+
+    # TODO: Use PLUP formula for inverse
+    # function LUpseudoinverse(L,U,P1,P2)
+    #     A = permutecolumns(Linverse(L),P1)
+    #     MS = matrix_space(parent(U[1,1]),ncols(U),nrows(U))
+    #     B = MS()
+    #     for j in 1:ncols(B)
+    #         for i in 1:nrows(U)
+    #             B[nrows(U)-i+1,ncols(B)-j+1] = 
+    #                 (A[[nrows(U)-i+1,ncols(B)-j+1] 
+    #                 + sum(-U[nrows(U)-i+1,ncols(B)-j+1+k]*B[nrows(U)-i+1+k,ncols(B)-j+1] for i in 1:(nrows(B)-ncols(B)))*inverse(U[nrows(U)-i+1,ncols(B)-j+1])])
+    #         end
+    #     end
+    #     return permuterows(B,inverseperm(P2))
+    # end
+    # n = A.rows
     
-    n = A.rows
+    # augmented = zeros(Int, n, 2*n)
+    # A_array = Array(A)
     
-    augmented = zeros(Int, n, 2*n)
-    A_array = Array(A)
+    # for i in 1:n
+    #     for j in 1:n
+    #         augmented[i, j] = A_array[i, j]
+    #     end
+    #     augmented[i, i+n] = 1
+    # end
     
-    for i in 1:n
-        for j in 1:n
-            augmented[i, j] = A_array[i, j]
-        end
-        augmented[i, i+n] = 1
-    end
+    # # Use the direct rref function that returns a GPUFiniteFieldMatrix
+    # result = rref_gpu_direct(augmented, A.N)
     
-    # Use the direct rref function that returns a GPUFiniteFieldMatrix
-    result = rref_gpu_direct(augmented, A.N)
-    
-    # Extract the inverse matrix
-    return result[1:n, (n+1):(2*n)]
+    # # Extract the inverse matrix
+    # return result[1:n, (n+1):(2*n)]
 end
 
 # Additional utility functions
@@ -294,8 +356,9 @@ end
 Creates an n×n identity matrix in the finite field.
 """
 function identity(::Type{T}, n::Integer, N::Integer) where T
-    I_mat = Matrix{T}(I, n, n)
-    return GPUFiniteFieldMatrix(I_mat, N)
+    # Use CUDA identity
+    # I_mat = Matrix{T}(I, n, n)
+    # return GPUFiniteFieldMatrix(I_mat, N)
 end
 
 """
@@ -304,8 +367,9 @@ end
 Creates a matrix of zeros in the finite field.
 """
 function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
-    Z_mat = zeros(T, rows, cols)
-    return GPUFiniteFieldMatrix(Z_mat, N)
+    # TODO: Use CUDA zeroes
+    # Z_mat = zeros(T, rows, cols)
+    # return GPUFiniteFieldMatrix(Z_mat, N)
 end
 
 """
@@ -314,9 +378,12 @@ end
 Creates a random matrix with elements in the finite field.
 """
 function rand(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
-    R_mat = rand(T(0):T(N-1), rows, cols)
-    return GPUFiniteFieldMatrix(R_mat, N)
+    # TODO: Use Cuda random
+    # R_mat = rand(T(0):T(N-1), rows, cols)
+    # return GPUFiniteFieldMatrix(R_mat, N)
 end
+
+
 
 # In-place operations with optional modulus
 """
@@ -336,11 +403,20 @@ function add!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, B::GPUFiniteFiel
     end
     
     # Perform addition and apply modulus in-place
-    C.data[1:C.rows, 1:C.cols] .= mod.(A.data[1:A.rows, 1:A.cols] .+ B.data[1:B.rows, 1:B.cols], N)
+    C.data .= mod.(A.data .+ B.data, N)
+
+    # TODO: Check this works
+    @. C.data = mod(A.data + B.data, N)
+
+    # TODO: Can we use existing inplace?
+    mod.(add!(C.data, A.data, B.data), N)
+
+    # TODO: Time them
     
     return C
 end
 
+# TODO: sub! or subtract!
 """
     subtract!(C, A, B, [mod_N])
 
@@ -358,7 +434,7 @@ function subtract!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, B::GPUFinit
     end
     
     # Perform subtraction and apply modulus in-place
-    C.data[1:C.rows, 1:C.cols] .= mod.(A.data[1:A.rows, 1:A.cols] .- B.data[1:B.rows, 1:B.cols], N)
+    C.data .= mod.(A.data .- B.data, N)
     
     return C
 end
@@ -392,6 +468,7 @@ In-place negation: B = -A mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
 function negate!(B::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
+    # TODO: can override with only one param (negate!(A, mod_N))
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -493,14 +570,7 @@ function multiply!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, B::GPUFinit
         error("Output matrix C has incorrect dimensions")
     end
     
-    # Use the existing mat_mul_gpu function with the specified modulus
-    # and copy the result to C
-    result = mat_mul_gpu(Array(A), Array(B), N)
-    
-    # Copy the result to C
-    result_inds = CartesianIndices(result)
-    C_inds = CartesianIndices((1:C.rows, 1:C.cols))
-    copyto!(C.data, C_inds, result, result_inds)
+    # TODO: 
     
     return C
 end
@@ -546,9 +616,11 @@ function change_modulus(A::GPUFiniteFieldMatrix, new_N::Integer)
     result = zeros(eltype(A.data), A.rows, A.cols, new_N)
     
     # Copy data and apply new modulus
-    result.data[1:result.rows, 1:result.cols] .= mod.(A.data[1:A.rows, 1:A.cols], new_N)
-    
-    return result
+    if new_N < A.N
+        result.data[1:result.rows, 1:result.cols] .= mod.(A.data[1:A.rows, 1:A.cols], new_N)
+    end
+
+    return
 end
 
 """
@@ -565,14 +637,16 @@ function change_modulus!(A::GPUFiniteFieldMatrix, new_N::Integer)
     end
     
     # Apply new modulus to all elements
-    A.data[1:A.rows, 1:A.cols] .= mod.(A.data[1:A.rows, 1:A.cols], new_N)
-    
-    # Update the modulus
+    if new_N < A.N
+        A.data[1:A.rows, 1:A.cols] .= mod.(A.data[1:A.rows, 1:A.cols], new_N)
+    end
+
     setfield!(A, :N, new_N)
     
     return A
 end
 
+# TODO: Remove the following
 # Direct matrix multiplication that returns GPUFiniteFieldMatrix
 """
     matmul_gpu_direct(A, B)

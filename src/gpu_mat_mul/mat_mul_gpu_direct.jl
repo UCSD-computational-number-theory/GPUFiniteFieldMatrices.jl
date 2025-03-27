@@ -6,6 +6,9 @@ using CUDA, LinearAlgebra, IterTools
 Matrix multiplication that works directly with GPUFiniteFieldMatrix objects.
 """
 function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing)
+    # TODO: Make version that takes in C as well
+    # TODO: Put if statement to check size of C matches size of A x B.
+    # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
     # Use the provided modulus if available, otherwise use A's modulus
     N = mod_N > 0 ? mod_N : A.N
     
