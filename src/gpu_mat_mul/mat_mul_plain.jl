@@ -1,10 +1,17 @@
 using CUDA, LinearAlgebra
 
-function mat_mul_plain(d_A, d_B, P)
+function mat_mul_plain(A, B, P)
     """
     Using default implementation of MatMul.
     """
 
-    d_C = d_A * d_B
-    return d_C
+    C = A * B
+    C .%= P
+    return C
+end
+
+function mat_mul_plain!(C, A, B, P)
+    LinearAlgebra.mul!(C,A,B)
+    C .%= P
+    return C
 end

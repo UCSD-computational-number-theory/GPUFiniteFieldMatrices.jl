@@ -1,11 +1,13 @@
 using CUDA, LinearAlgebra, IterTools
+
+const global TILE_WIDTH = 32
+
 include("mat_mul_plain.jl")
 include("mat_mul_no_ops.jl")
 include("mat_mul_ops.jl")
 
-const global TILE_WIDTH = 32
 
-function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
+function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float32, tile_width=32)
     """
     Hybrid matmul algorithm that incorporates three different regimes:
 
@@ -23,10 +25,30 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     By default, type is Float64 or Int53. 
     For reference, Float32 is Int24; Float16 is Int10 (Int11?).
     """
-
     # Define rows and cols of matrices
     A_rows, A_cols = size(A)
     B_rows,B_cols = size(B)
+
+    # Compute the MAX_OPS
+    MAX_OPS = find_max_ops(type, N)
+
+    # Determine regiment to use if not hardcoded
+    if REGIME == "⊠"
+        if MAX_OPS >= A_cols # equal to B_rows
+            REGIME = "⊡"
+        elseif MAX_OPS > TILE_WIDTH
+            REGIME = "⊟"
+        else
+            REGIME = "⊞"
+        end
+    end
+
+    if REGIME == "⊡"
+        return mat_mul_plain(A,B,N)
+    end
+
+
+
 
     # Check for proper dimensions
     if A_cols != B_rows
@@ -58,6 +80,8 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     d_C = CUDA.CuArray{t}(undef, (A_padded_rows, B_padded_cols))
 
     # Move the matrices from CPU to GPU CUDA Arrays
+    #d_A = A
+    #d_B = B
     copyto!(d_A, d_Ainds, A, Ainds)
     copyto!(d_B, d_Binds, B, Binds)
 
@@ -65,6 +89,33 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
     if tile_width < 1
         error("Invalid tile width")
     end
+
+
+    # Compute based on regime
+    if REGIME == "⊟"
+        
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_no_ops_everyreduce(d_A,d_B,d_C,N,A_padded_rows,type)
+        return d_C[1:A_rows, 1:B_cols]
+
+    elseif REGIME == "⊞"
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,N,A_padded_rows,type,MAX_OPS)
+        return d_C[1:A_rows, 1:B_cols]
+
+    else
+        error("Input regime is invalid.")
+    end
+
+    return 
+end
+
+"""
+In place version of mat_mul_gpu
+"""
+function mat_mul_gpu!(C, A, B, N, REGIME="⊠", type=Float32, tile_width=32)
+
+    # Define rows and cols of matrices
+    A_rows, A_cols = size(A)
+    B_rows,B_cols = size(B)
 
     # Compute the MAX_OPS
     MAX_OPS = find_max_ops(type, N)
@@ -79,26 +130,76 @@ function mat_mul_gpu(A, B, N, REGIME="⊠", type=Float64, tile_width=25)
             REGIME = "⊞"
         end
     end
-    REGIME = "⊡"
 
-    # Compute based on regime
     if REGIME == "⊡"
-        return mat_mul_plain(d_A,d_B,N)[1:A_rows, 1:B_cols]
+        return mat_mul_plain!(C,A,B,N)
+    end
 
-    elseif REGIME == "⊟"
-        println("running the algorithm")
-        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_no_ops(d_A,d_B,d_C,N,A_padded_rows,type)
-        return d_C[1:A_rows, 1:B_cols]
+
+
+
+    # Check for proper dimensions
+    if A_cols != B_rows
+        error(
+            "Matrix dimensions do not match.
+            A has $A_rows rows and $A_cols cols, 
+            B has $B_rows rows and $B_cols cols."
+        ) 
+    end
+
+
+    # Calculate number of tiles for each dimensions
+    # Note that A_padded_cols = B_padded_rows by matrix multiplication
+    A_padded_rows = ceil(Int, A_rows / TILE_WIDTH) * TILE_WIDTH
+    A_padded_cols = ceil(Int, A_cols / TILE_WIDTH) * TILE_WIDTH
+    B_padded_cols = ceil(Int, B_cols / TILE_WIDTH) * TILE_WIDTH
+
+    # Define indices for moving to CUDA Arrays
+    Ainds = CartesianIndices(A)
+    d_Ainds = CartesianIndices((1:A_rows,1:A_cols))
+    Binds = CartesianIndices(B)
+    d_Binds = CartesianIndices((1:B_rows,1:B_cols))
+
+    # Define CUDA arrays of appropriate size
+    t = eltype(A)
+    # Note that undef makes all values default to 0
+    d_A = CUDA.CuArray{t}(undef, (A_padded_rows, A_padded_cols))
+    d_B = CUDA.CuArray{t}(undef, (A_padded_cols, B_padded_cols))
+    d_C = CUDA.CuArray{t}(undef, (A_padded_rows, B_padded_cols))
+
+    # Move the matrices from CPU to GPU CUDA Arrays
+    #d_A = A
+    #d_B = B
+    copyto!(d_A, d_Ainds, A, Ainds)
+    copyto!(d_B, d_Binds, B, Binds)
+
+    # Hardcode tile width unles inputted
+    if tile_width < 1
+        error("Invalid tile width")
+    end
+
+
+    d_Cinds = CartesianIndices((1:A_rows,1:B_cols))
+    # Compute based on regime
+    if REGIME == "⊟"
+        
+        @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_no_ops_everyreduce(d_A,d_B,d_C,N,A_padded_rows,type)
+
+        copyto!(C,d_Cinds,d_C,d_Cinds)
+        return C
 
     elseif REGIME == "⊞"
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(B_padded_cols,TILE_WIDTH),div(A_padded_rows,TILE_WIDTH)) mat_mul_ops(d_A,d_B,d_C,N,A_padded_rows,type,MAX_OPS)
-        return d_C[1:A_rows, 1:B_cols]
+
+        copyto!(C,d_Cinds,d_C,d_Cinds)
+        return C
 
     else
         error("Input regime is invalid.")
     end
 
     return 
+
 end
 
 """
