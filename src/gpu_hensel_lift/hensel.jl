@@ -40,6 +40,10 @@ function hensel_pseudoinverse(p, precision, A, T)
         T = 2*T - T * (A*T)
         i *= 2
     end
+    # TODO Move from GPU to Oscar
     R, pi = residue_ring(ZZ, p^precision)
     return matrix(R, [R(x) for x in Array(T)])
 end
+
+function hensel_pseudoinverse!(p ,precision, A, T)
+    # TODO Make inplace version
