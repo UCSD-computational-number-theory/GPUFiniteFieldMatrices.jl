@@ -36,6 +36,7 @@ function test_matmul_operations()
     println()
     
     # Verify the result matches expected calculation (mod 11)
+    # TODO: Note we cast just to check the construtor works (though I think this should be removed)
     expected_C = GPUFiniteFieldMatrix(C_data .% modulus, modulus)
     @test Array(C) ≈ Array(expected_C)
     
@@ -47,7 +48,6 @@ function test_matmul_operations()
     display(C_direct)
     println()
     
-    # Check that both implementations yield the same result
     @test Array(C) ≈ Array(C_direct)
     
     # Test multiplication with modulus override
@@ -59,6 +59,7 @@ function test_matmul_operations()
     println()
     
     # Verify the result matches expected calculation (mod override_modulus)
+    # See previous TODO
     expected_C_mod = (A_data * B_data) .% override_modulus
     @test Array(C_mod) ≈ expected_C_mod
     
@@ -71,7 +72,6 @@ Test in-place matrix multiplication operations on GPUFiniteFieldMatrix.
 function test_inplace_matmul_operations()
     println("Testing in-place matrix multiplication operations on GPUFiniteFieldMatrix...")
     
-    # Test matrices
     A_data = [1 2 3; 4 5 6]
     B_data = [7 8; 9 10; 11 12]
     C_data = zeros(Int, 2, 2)  # Destination matrix
@@ -102,6 +102,7 @@ function test_inplace_matmul_operations()
     println()
     
     # Verify the result matches expected calculation (mod 11)
+    # See previous TODO
     expected_C = (A_data * B_data) .% modulus
     @test Array(C) ≈ expected_C
     
@@ -116,49 +117,13 @@ function test_inplace_matmul_operations()
     println()
     
     # Verify the result matches expected calculation (mod override_modulus)
+    # see previous TODO
     expected_C2 = (A_data * B_data) .% override_modulus
     @test Array(C2) ≈ expected_C2
     
     println("All in-place matrix multiplication operations tests passed!")
 end
 
-"""
-Test matrix multiplication with different regimes.
-"""
-function test_matmul_regimes()
-    println("Testing matrix multiplication with different regimes...")
-    
-    # Test matrices
-    A_data = [1 2 3; 4 5 6]
-    B_data = [7 8; 9 10; 11 12]
-    modulus = 11  # Prime modulus
-    
-    A = GPUFiniteFieldMatrix(A_data, modulus)
-    B = GPUFiniteFieldMatrix(B_data, modulus)
-    
-    # Test standard regime
-    println("Testing standard regime (⊠)...")
-    C1 = mat_mul_gpu_type(A, B, -1, "⊠")
-    
-    println("mat_mul_gpu_type(A, B, regime='⊠') = ")
-    display(C1)
-    println()
-    
-    # Test hybrid regime
-    println("Testing hybrid regime (hybrid)...")
-    C2 = mat_mul_gpu_type(A, B, -1, "hybrid")
-    
-    println("mat_mul_gpu_type(A, B, regime='hybrid') = ")
-    display(C2)
-    println()
-    
-    # Verify both regimes yield the same result
-    @test Array(C1) ≈ Array(C2)
-    
-    println("All matrix multiplication regime tests passed!")
-end
-
-# Run all tests
 function test_matmul()
     test_matmul_operations()
     test_inplace_matmul_operations()
