@@ -13,7 +13,6 @@ This includes:
 function test_inplace_operations()
     println("Testing in-place operations of GPUFiniteFieldMatrix...")
     
-    # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     B_data = [9 8 7; 6 5 4; 3 2 1]
     modulus = 11  # Use a prime modulus
@@ -21,7 +20,6 @@ function test_inplace_operations()
     A = GPUFiniteFieldMatrix(A_data, modulus)
     B = GPUFiniteFieldMatrix(B_data, modulus)
     
-    # Pre-allocate result matrices
     C = zeros(Int, 3, 3, modulus)
     D = zeros(Int, 3, 3, modulus)
     
@@ -39,7 +37,6 @@ function test_inplace_operations()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data + B_data, modulus)
     @test Array(C) == expected
     
@@ -49,7 +46,6 @@ function test_inplace_operations()
     display(D)
     println()
     
-    # Verify result
     expected = mod.(A_data - B_data, modulus)
     @test Array(D) == expected
     
@@ -59,7 +55,6 @@ function test_inplace_operations()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .* B_data, modulus)
     @test Array(C) == expected
     
@@ -69,7 +64,6 @@ function test_inplace_operations()
     display(D)
     println()
     
-    # Verify result
     expected = mod.(-A_data, modulus)
     @test Array(D) == expected
     
@@ -82,7 +76,6 @@ function test_inplace_operations()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .+ scalar, modulus)
     @test Array(C) == expected
     
@@ -92,7 +85,6 @@ function test_inplace_operations()
     display(D)
     println()
     
-    # Verify result
     expected = mod.(A_data .- scalar, modulus)
     @test Array(D) == expected
     
@@ -102,7 +94,6 @@ function test_inplace_operations()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .* scalar, modulus)
     @test Array(C) == expected
     
@@ -113,7 +104,6 @@ function test_inplace_operations()
     display(E)
     println()
     
-    # Verify result
     expected = mod.(A_data * B_data, modulus)
     @test Array(E) == expected
     
@@ -126,14 +116,13 @@ Test in-place operations with modulus override.
 function test_inplace_modulus_override()
     println("Testing in-place operations with modulus override...")
     
-    # Create matrices with different moduli
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus1 = 11
     modulus2 = 7
     
     A = GPUFiniteFieldMatrix(A_data, modulus1)
     B = GPUFiniteFieldMatrix(A_data, modulus2)
-    C = zeros(Int, 3, 3, modulus1)  # Result matrix with modulus1
+    C = zeros(Int, 3, 3, modulus1) 
     
     # Test add! with modulus override
     override_modulus = 5
@@ -143,7 +132,6 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result uses the override modulus
     expected = mod.(A_data + A_data, override_modulus)
     @test Array(C) == expected
     
@@ -154,7 +142,6 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data - A_data, override_modulus)
     @test Array(C) == expected
     
@@ -165,11 +152,9 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .* A_data, override_modulus)
     @test Array(C) == expected
     
-    # Test scalar operations with modulus override
     scalar = 3
     
     # Test scalar_add! with modulus override
@@ -178,7 +163,6 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .+ scalar, override_modulus)
     @test Array(C) == expected
     
@@ -188,7 +172,6 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .- scalar, override_modulus)
     @test Array(C) == expected
     
@@ -198,7 +181,6 @@ function test_inplace_modulus_override()
     display(C)
     println()
     
-    # Verify result
     expected = mod.(A_data .* scalar, override_modulus)
     @test Array(C) == expected
     
@@ -209,7 +191,6 @@ function test_inplace_modulus_override()
     display(D)
     println()
     
-    # Verify result
     expected = mod.(A_data * A_data, override_modulus)
     @test Array(D) == expected
     
@@ -219,7 +200,6 @@ end
 function test_inplace_copy_and_mod()
     println("Testing in-place copy and modulus operations...")
     
-    # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11
     
@@ -232,7 +212,6 @@ function test_inplace_copy_and_mod()
     display(B)
     println()
     
-    # Verify result
     @test Array(B) == A_data
     
     # Test mod_elements!
@@ -242,7 +221,6 @@ function test_inplace_copy_and_mod()
     display(F)
     println()
     
-    # Verify result
     expected = mod.(A_data * 2, modulus)
     @test Array(F) == expected
     
@@ -253,14 +231,12 @@ function test_inplace_copy_and_mod()
     display(F)
     println()
     
-    # Verify result
     expected = mod.(expected, override_modulus)
     @test Array(F) == expected
     
     println("All in-place copy and modulus operations tests passed!")
 end
 
-# Run all tests
 function test_inplace()
     test_inplace_operations()
     test_inplace_modulus_override()
