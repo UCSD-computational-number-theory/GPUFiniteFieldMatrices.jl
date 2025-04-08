@@ -10,8 +10,7 @@ Benchmark performance of standard operations vs. in-place operations.
 function benchmark_inplace_vs_standard()
     println("Benchmarking in-place operations vs. standard operations...")
     
-    # Test matrices - larger size for more meaningful benchmarks
-    n = 64  # Use powers of 2 for optimal GPU performance
+    n = 64  # Use multiples of 32 for no padding
     modulus = 11  # Prime modulus
     
     # Create test matrices
@@ -84,11 +83,9 @@ Benchmark performance of different matrix multiplication regimes.
 function benchmark_matmul_regimes()
     println("Benchmarking different matrix multiplication regimes...")
     
-    # Test matrices - larger size for more meaningful benchmarks
-    n = 128  # Use powers of 2 for optimal GPU performance
+    n = 128  # Use multiples of 32
     modulus = 101  # Prime modulus
     
-    # Create test matrices
     A_data = rand(0:modulus-1, n, n)
     B_data = rand(0:modulus-1, n, n)
     
@@ -132,7 +129,6 @@ Benchmark RREF operations.
 function benchmark_rref_operations()
     println("Benchmarking RREF operations...")
     
-    # Test matrices - use different sizes
     sizes = [32, 64, 128]
     modulus = 17  # Prime modulus
     
@@ -172,7 +168,6 @@ function benchmark_rref_operations()
     println("All RREF benchmarks completed successfully!")
 end
 
-# Run all benchmarks
 function run_benchmarks()
     benchmark_inplace_vs_standard()
     benchmark_matmul_regimes()
