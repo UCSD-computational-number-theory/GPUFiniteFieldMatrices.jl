@@ -10,7 +10,6 @@ This tests both the standard and direct implementations.
 function test_rref_operations()
     println("Testing RREF operations on GPUFiniteFieldMatrix...")
     
-    # Test matrices
     A_data = [1 2 3; 4 5 6; 7 8 9]  # Rank 2
     B_data = [1 0 0; 0 1 0; 0 0 1]  # Identity, full rank
     C_data = [1 2 3; 2 4 6; 3 6 9]  # Rank 1
