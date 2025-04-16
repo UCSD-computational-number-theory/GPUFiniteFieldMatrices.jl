@@ -3,13 +3,13 @@ include("rref_new_kernels.jl")
 include("../gpu_mat_type/gpu_mat.jl")
 
 """
-    rref_gpu_type(A::GPUFiniteFieldMatrix, [mod_N])
+    rref_gpu_type(A::GpuMatrixModN, [mod_N])
 
-Row reduction (RREF) that works directly with GPUFiniteFieldMatrix objects.
-Returns a new GPUFiniteFieldMatrix in row reduced echelon form.
+Row reduction (RREF) that works directly with GpuMatrixModN objects.
+Returns a new GpuMatrixModN in row reduced echelon form.
 If mod_N is provided, it will be used instead of A.N for the modulus.
 """
-function rref_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
+function rref_gpu_type(A::GpuMatrixModN, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
     
     A_rows, A_cols = size(A)
@@ -42,19 +42,19 @@ function rref_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
         col += 1
     end
 
-    result = GPUFiniteFieldMatrix(d_A, A_rows, A_cols, N)
+    result = GpuMatrixModN(d_A, A_rows, A_cols, N)
     
     return result
 end
 
 """
-    lu_gpu_type(A::GPUFiniteFieldMatrix, [mod_N])
+    lu_gpu_type(A::GpuMatrixModN, [mod_N])
 
-LU decomposition that works directly with GPUFiniteFieldMatrix objects.
-Returns matrices in GPUFiniteFieldMatrix format.
+LU decomposition that works directly with GpuMatrixModN objects.
+Returns matrices in GpuMatrixModN format.
 If mod_N is provided, it will be used instead of A.N for the modulus.
 """
-function lu_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
+function lu_gpu_type(A::GpuMatrixModN, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
     
     A_rows, A_cols = size(A)
@@ -93,21 +93,21 @@ function lu_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
         col += 1
     end
     
-    # Create GPUFiniteFieldMatrix objects for the results using the new constructor
-    U = GPUFiniteFieldMatrix(d_A, A_rows, A_cols, N)
-    L = GPUFiniteFieldMatrix(d_L, A_rows, A_rows, N)
+    # Create GpuMatrixModN objects for the results using the new constructor
+    U = GpuMatrixModN(d_A, A_rows, A_cols, N)
+    L = GpuMatrixModN(d_L, A_rows, A_rows, N)
     
     return (U, L, Perm)
 end
 
 """
-    plup_gpu_type(A::GPUFiniteFieldMatrix, [mod_N])
+    plup_gpu_type(A::GpuMatrixModN, [mod_N])
 
-PLUP decomposition that works directly with GPUFiniteFieldMatrix objects.
-Returns U and L matrices in GPUFiniteFieldMatrix format.
+PLUP decomposition that works directly with GpuMatrixModN objects.
+Returns U and L matrices in GpuMatrixModN format.
 If mod_N is provided, it will be used instead of A.N for the modulus.
 """
-function plup_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
+function plup_gpu_type(A::GpuMatrixModN, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
     TILE_WIDTH = 32
     
@@ -153,9 +153,9 @@ function plup_gpu_type(A::GPUFiniteFieldMatrix, mod_N::Integer=-1)
         col += 1
     end
     
-    # Create GPUFiniteFieldMatrix objects for the results using the new constructor
-    U = GPUFiniteFieldMatrix(d_A, A.rows, A.cols, N)
-    L = GPUFiniteFieldMatrix(d_L, A.rows, A.rows, N)
+    # Create GpuMatrixModN objects for the results using the new constructor
+    U = GpuMatrixModN(d_A, A.rows, A.cols, N)
+    L = GpuMatrixModN(d_L, A.rows, A.rows, N)
     
     return (U, L, Perm_rows, Perm_cols)
 end 

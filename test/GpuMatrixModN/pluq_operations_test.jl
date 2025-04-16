@@ -4,20 +4,20 @@ using CUDA
 using LinearAlgebra
 
 """
-Test row reduction operations on GPUFiniteFieldMatrix.
+Test row reduction operations on GpuMatrixModN.
 This tests both the standard and direct implementations.
 """
 function test_pluq_operations()
-    println("Testing PLUQ operations on GPUFiniteFieldMatrix...")
+    println("Testing PLUQ operations on GpuMatrixModN...")
     
     A_data = [1 2 3; 4 5 6; 7 8 9]  # Rank 2
     B_data = [1 0 0; 0 1 0; 0 0 1]  # Identity, full rank
     C_data = [1 2 3; 2 4 6; 3 6 9]  # Rank 1
     modulus = 11  # Prime modulus
     
-    A = GPUFiniteFieldMatrix(A_data, modulus)
-    B = GPUFiniteFieldMatrix(B_data, modulus)
-    C = GPUFiniteFieldMatrix(C_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
+    B = GpuMatrixModN(B_data, modulus)
+    C = GpuMatrixModN(C_data, modulus)
     
     println("Matrix A = ")
     display(A)
@@ -69,16 +69,16 @@ function test_pluq_operations()
 end
 
 """
-Test LU decomposition operations on GPUFiniteFieldMatrix.
+Test LU decomposition operations on GpuMatrixModN.
 """
 function test_lu_operations()
-    println("Testing LU decomposition operations on GPUFiniteFieldMatrix...")
+    println("Testing LU decomposition operations on GpuMatrixModN...")
     
     # Test matrix
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11  # Prime modulus
     
-    A = GPUFiniteFieldMatrix(A_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
     
     println("Matrix A = ")
     display(A)
@@ -116,16 +116,16 @@ function test_lu_operations()
 end
 
 """
-Test PLUP decomposition operations on GPUFiniteFieldMatrix.
+Test PLUP decomposition operations on GpuMatrixModN.
 """
 function test_plup_operations()
-    println("Testing PLUP decomposition operations on GPUFiniteFieldMatrix...")
+    println("Testing PLUP decomposition operations on GpuMatrixModN...")
     
     # Test matrix
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11  # Prime modulus
     
-    A = GPUFiniteFieldMatrix(A_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
     
     println("Matrix A = ")
     display(A)

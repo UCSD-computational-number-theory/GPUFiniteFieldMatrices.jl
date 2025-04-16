@@ -4,7 +4,7 @@ using CUDA
 using LinearAlgebra
 
 """
-Test basic operations of the GPUFiniteFieldMatrix type.
+Test basic operations of the GpuMatrixModN type.
 This includes:
 - Initialization and properties
 - Basic arithmetic operations
@@ -12,12 +12,12 @@ This includes:
 - Utility functions
 """
 function test_basic_operations()
-    println("Testing basic operations of GPUFiniteFieldMatrix...")
+    println("Testing basic operations of GpuMatrixModN...")
     
     # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11  # Use a prime modulus
-    A = GPUFiniteFieldMatrix(A_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
     
     println("A = ")
     display(A)
@@ -31,7 +31,7 @@ function test_basic_operations()
     
     # Test arithmetic operations
     B_data = [9 8 7; 6 5 4; 3 2 1]
-    B = GPUFiniteFieldMatrix(B_data, modulus)
+    B = GpuMatrixModN(B_data, modulus)
     
     println("B = ")
     display(B)
@@ -116,10 +116,10 @@ function test_basic_operations()
 end
 
 """
-Test utility functions of the GPUFiniteFieldMatrix type.
+Test utility functions of the GpuMatrixModN type.
 """
 function test_utility_functions()
-    println("Testing utility functions of GPUFiniteFieldMatrix...")
+    println("Testing utility functions of GpuMatrixModN...")
     modulus = 11
     
     # Test identity
@@ -147,15 +147,15 @@ function test_utility_functions()
 end
 
 """
-Test matrix operations of the GPUFiniteFieldMatrix type.
+Test matrix operations of the GpuMatrixModN type.
 """
 function test_matrix_operations()
-    println("Testing matrix operations of GPUFiniteFieldMatrix...")
+    println("Testing matrix operations of GpuMatrixModN...")
     modulus = 11
     
     # Create an invertible matrix mod 11
     G_data = [1 2 3; 0 1 4; 5 6 0]
-    G = GPUFiniteFieldMatrix(G_data, modulus)
+    G = GpuMatrixModN(G_data, modulus)
     
     println("G = ")
     display(G)
@@ -197,7 +197,7 @@ function test_matrix_operations()
     
     # Test non-invertible matrix
     N_data = [1 2 3; 2 4 6; 3 6 9]  # Linearly dependent rows
-    N = GPUFiniteFieldMatrix(N_data, modulus)
+    N = GpuMatrixModN(N_data, modulus)
     
     println("N = ")
     display(N)
@@ -209,17 +209,17 @@ function test_matrix_operations()
 end
 
 """
-Test modulus-changing functions of the GPUFiniteFieldMatrix type.
+Test modulus-changing functions of the GpuMatrixModN type.
 """
 function test_modulus_functions()
-    println("Testing modulus-changing functions of GPUFiniteFieldMatrix...")
+    println("Testing modulus-changing functions of GpuMatrixModN...")
     
     # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus1 = 11  # First modulus
     modulus2 = 7   # Second modulus
     
-    A = GPUFiniteFieldMatrix(A_data, modulus1)
+    A = GpuMatrixModN(A_data, modulus1)
     
     println("A (mod $modulus1) = ")
     display(A)
@@ -241,7 +241,7 @@ function test_modulus_functions()
     @test A.N == modulus1
     
     # Test change_modulus! (in-place)
-    C = GPUFiniteFieldMatrix(A_data, modulus1)
+    C = GpuMatrixModN(A_data, modulus1)
     change_modulus!(C, modulus2)
     
     println("C after change_modulus!(C, $modulus2) = ")
@@ -262,7 +262,7 @@ function test_gpu_mat()
     test_matrix_operations()
     test_modulus_functions()
     
-    println("\nAll GPUFiniteFieldMatrix tests passed!")
+    println("\nAll GpuMatrixModN tests passed!")
 end
 
 # Run the tests if this file is run directly

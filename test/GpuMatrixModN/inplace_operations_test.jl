@@ -4,21 +4,21 @@ using CUDA
 using LinearAlgebra
 
 """
-Test in-place operations of the GPUFiniteFieldMatrix type.
+Test in-place operations of the GpuMatrixModN type.
 This includes:
 - Basic in-place arithmetic operations
 - In-place scalar operations
 - In-place operations with modulus override
 """
 function test_inplace_operations()
-    println("Testing in-place operations of GPUFiniteFieldMatrix...")
+    println("Testing in-place operations of GpuMatrixModN...")
     
     A_data = [1 2 3; 4 5 6; 7 8 9]
     B_data = [9 8 7; 6 5 4; 3 2 1]
     modulus = 11  # Use a prime modulus
     
-    A = GPUFiniteFieldMatrix(A_data, modulus)
-    B = GPUFiniteFieldMatrix(B_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
+    B = GpuMatrixModN(B_data, modulus)
     
     C = zeros(Int, 3, 3, modulus)
     D = zeros(Int, 3, 3, modulus)
@@ -120,8 +120,8 @@ function test_inplace_modulus_override()
     modulus1 = 11
     modulus2 = 7
     
-    A = GPUFiniteFieldMatrix(A_data, modulus1)
-    B = GPUFiniteFieldMatrix(A_data, modulus2)
+    A = GpuMatrixModN(A_data, modulus1)
+    B = GpuMatrixModN(A_data, modulus2)
     C = zeros(Int, 3, 3, modulus1) 
     
     # Test add! with modulus override
@@ -203,7 +203,7 @@ function test_inplace_copy_and_mod()
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11
     
-    A = GPUFiniteFieldMatrix(A_data, modulus)
+    A = GpuMatrixModN(A_data, modulus)
     B = zeros(Int, 3, 3, modulus)
     
     # Test copy!
@@ -215,7 +215,7 @@ function test_inplace_copy_and_mod()
     @test Array(B) == A_data
     
     # Test mod_elements!
-    F = GPUFiniteFieldMatrix(A_data * 2, modulus)
+    F = GpuMatrixModN(A_data * 2, modulus)
     mod_elements!(F)
     println("F with modulus applied in-place = ")
     display(F)

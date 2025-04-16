@@ -2,11 +2,11 @@ using CUDA, LinearAlgebra, IterTools
 include("../gpu_mat_type/gpu_mat.jl")
 
 """
-    mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, [mod_N])
+    mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, [mod_N])
 
-Matrix multiplication that works directly with GPUFiniteFieldMatrix objects.
+Matrix multiplication that works directly with GpuMatrixModN objects.
 """
-function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing, C=nothing)
+function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1, REGIME="⊠", type=nothing, C=nothing)
     # TODO: Put if statement to check size of C matches size of A x B.
     # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
     # Use the provided modulus if available, otherwise use A's modulus
@@ -76,18 +76,18 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
     end
     
     if C === nothing
-        return GPUFiniteFieldMatrix(d_C, N, new_rows = A_rows, new_cols = B_cols)
+        return GpuMatrixModN(d_C, N, new_rows = A_rows, new_cols = B_cols)
     else
         return C
     end
 end
 
 """
-    mat_mul_type_inplace!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, [mod_N])
+    mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, [mod_N])
 
-In-place matrix multiplication that works directly with GPUFiniteFieldMatrix objects.
+In-place matrix multiplication that works directly with GpuMatrixModN objects.
 """
-function mat_mul_type_inplace!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing)
+function mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1, REGIME="⊠", type=nothing)
     # Use the provided modulus if available, otherwise use A's modulus
     N = mod_N > 0 ? mod_N : A.N
     
