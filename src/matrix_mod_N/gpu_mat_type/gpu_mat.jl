@@ -23,6 +23,14 @@ struct MatrixModulusNotPrimeException <: Exception
     message::String
 end
 
+function mod_kernel!(data, N)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if i <= length(data)
+        data[i] = data[i] % N
+    end
+    return nothing
+end
+
 """
     GPUFiniteFieldMatrix{T}
 
@@ -43,7 +51,7 @@ struct GPUFiniteFieldMatrix{T}
     
     General contructor from abstract CPU matrix.
     """
-    function GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int, elem_type::DataType=DEFAULT_TYPE, mod=true) where T
+    function GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int; elem_type::DataType=DEFAULT_TYPE, mod=true, new_rows=nothing, new_cols=nothing) where T
         rows, cols = size(A)
         
         padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
@@ -59,33 +67,16 @@ struct GPUFiniteFieldMatrix{T}
         copyto!(data, data_inds, A, A_inds)
         
         if mod
-            data .= mod.(data, N)
+            threads = 32
+            blocks = cld(length(data), threads)
+            @cuda threads=threads blocks=blocks mod_kernel!(data, N)
         end
-        
-        new{T}(data, rows, cols, N)
-    end
 
-    """
-        unsafe_GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N)
-
-    Wrapper constructor for results already on the GPU.
-    Unsafe as it does not pad.
-    """
-    function unsafe_GPUFiniteFieldMatrix(A::AbstractMatrix{T}, N::Int, elem_type::DataType=DEFAULT_TYPE, mod=false) where T
-        rows, cols = size(A)
-        
-        data = CUDA.CuArray{T}(undef, (rows, cols))
-        data .= T(0)
-        
-        A_inds = CartesianIndices(A)
-        data_inds = CartesianIndices((1:rows, 1:cols))
-        copyto!(data, data_inds, A, A_inds)
-        
-        if mod
-            data .= mod.(data, N)
+        if new_rows != nothing && new_cols != nothing
+            new{T}(data, new_rows, new_cols, N)
+        else
+            new{T}(data, rows, cols, N)
         end
-        
-        new{T}(data, rows, cols, N)
     end
 
     """
@@ -93,33 +84,15 @@ struct GPUFiniteFieldMatrix{T}
 
     Wrapper constructor for results already on the GPU.
     """
-    function GPUFiniteFieldMatrix(data::CuArray{T, 2}, N::Int, mod=true) where T
-        if mod
-            data .= mod.(data, N)
+    function GPUFiniteFieldMatrix(A::CuArray{T, 2}, N::Int; elem_type::DataType=DEFAULT_TYPE, mod=false, new_rows=nothing, new_cols=nothing) where T
+        data = A
+        rows, cols = size(data)
+    
+        if new_rows != nothing && new_cols != nothing
+            new{T}(data, new_rows, new_cols, N)
+        else
+            new{T}(data, rows, cols, N)
         end
-
-        padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
-        padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-
-        padded_data = CUDA.CuArray{T}(undef, (padded_rows, padded_cols))
-        padded_data .= T(0)
-        padded_data[1:rows, 1:cols] .= data
-
-        new{T}(padded_data, rows, cols, N)
-    end
-
-    """
-        unsafe_GPUFiniteFieldMatrix(data::CuArray, N, rows, cols)
-
-    Wrapper constructor for results already on the GPU.
-    Unsafe as it does not pad.
-    """
-    function unsafe_GPUFiniteFieldMatrix(data::CuArray{T, 2}, N::Int, rows::Int, cols::Int, mod=false) where T
-        if mod
-            data .= mod.(data, N)
-        end
-
-        new{T}(data, rows, cols, N)
     end
 end
 
@@ -180,6 +153,11 @@ function Base.show(io::IO, A::GPUFiniteFieldMatrix)
     show(io, Array(A))
 end
 
+function Base.display(A::GPUFiniteFieldMatrix)
+    println("$(A.rows)×$(A.cols) GPUFiniteFieldMatrix modulo $(A.N):")
+    println(Array(A))
+end
+
 # Basic arithmetic operations with delayed reduction
 import Base: +, -, *
 
@@ -192,7 +170,7 @@ function +(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     end
     
     result = mod.(A.data + B.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function -(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
@@ -204,13 +182,13 @@ function -(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     end
     
     result = mod.(A.data - B.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 # Scalar operations
 function +(a::Number, A::GPUFiniteFieldMatrix)
     result = mod.(a .+ A.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function +(A::GPUFiniteFieldMatrix, a::Number)
@@ -219,17 +197,17 @@ end
 
 function -(a::Number, A::GPUFiniteFieldMatrix)
     result = mod.(a .- A.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function -(A::GPUFiniteFieldMatrix, a::Number)
     result = mod.(A.data .- a, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function *(a::Number, A::GPUFiniteFieldMatrix)
     result = mod.(a .* A.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function *(A::GPUFiniteFieldMatrix, a::Number)
@@ -244,10 +222,10 @@ function *(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     end
     # Note size checks etc. are done in mat_mul_gpu
     
-    mat_mul_gpu(A, B)
+    mat_mul_gpu_type(A, B)
 end
 
-function .*(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
+function Base.broadcasted(::typeof(*), A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     if A.N != B.N
         throw(MatrixModulusMismatchException(
             "Matrices must have the same modulus N."
@@ -263,12 +241,12 @@ function .*(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix)
     
     result = mod.(A.data .* B.data, A.N)
     
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 function -(A::GPUFiniteFieldMatrix)
     result = mod.(-A.data, A.N)
-    GPUFiniteFieldMatrix(result, A.N)
+    GPUFiniteFieldMatrix(result, A.N, new_rows = A.rows, new_cols = A.cols)
 end
 
 # Recursive binary exponentiation algorithm
@@ -315,8 +293,9 @@ end
 
 Checks if a matrix is invertible mod N.
 """
-function is_invertible(A::GPUFiniteFieldMatrix)
-    if !isprime(A.N) || A.rows != A.cols
+function is_invertible(A::GPUFiniteFieldMatrix{T}) where T
+    # assuming isprime(A.N)
+    if A.rows != A.cols
         return false
     end
     return true
@@ -379,7 +358,7 @@ function inverse(A::GPUFiniteFieldMatrix)
     UL_inv = mod.(U_inv * L_inv, A.N)
     A_inv = mod.(CUDA.transpose(Q) * UL_inv * CUDA.transpose(P), A.N)
 
-    unsafe_GPUFiniteFieldMatrix(A_inv, A.N, n, n)
+    GPUFiniteFieldMatrix(A_inv, A.N, new_rows=n, new_cols=n)
 end
 
 # Additional utility functions
@@ -388,15 +367,16 @@ end
 
 Creates an n×n identity matrix in the finite field.
 """
-function identity(::Type{T}, n::Integer, N::Integer) where T
+function Base.identity(::Type{T}, n::Integer, N::Integer) where T
     padded_size = ceil(Int, n / TILE_WIDTH) * TILE_WIDTH
-    unsafe_GPUFiniteFieldMatrix(CUDA.identity(T, padded_size, padded_size), n, n, N)
+    GPUFiniteFieldMatrix(Matrix{T}(I, n, n), N, new_rows=n, new_cols=n)
 end
 
-function identity(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
-    padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
-    padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-    unsafe_GPUFiniteFieldMatrix(CUDA.identity(T, padded_rows, padded_cols), rows, cols, N)
+# function Base.identity(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
+#     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
+#     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
+#     unsafe_GPUFiniteFieldMatrix(CUDA.identity(T, padded_rows, padded_cols), N, new_rows=rows, new_cols=cols)
+# end
 
 """
     zeros(T, rows, cols, N)
@@ -406,7 +386,7 @@ Creates a matrix of zeros in the finite field.
 function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-    unsafe_GPUFiniteFieldMatrix(CUDA.zeros(T, padded_rows, padded_cols), rows, cols, N)
+    GPUFiniteFieldMatrix(CUDA.zeros(T, padded_rows, padded_cols), N, new_rows=rows, new_cols=cols)
 end
 
 """
@@ -418,7 +398,7 @@ function rand(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
     # TODO: Here even the padding is nonzero.
-    unsafe_GPUFiniteFieldMatrix(mod.(CUDA.rand(T, padded_rows, padded_cols), N), rows, cols, N)
+    GPUFiniteFieldMatrix(mod.(CUDA.rand(T, padded_rows, padded_cols), N), N, new_rows=rows, new_cols=cols)
 end
 
 # In-place operations with optional modulus
@@ -671,8 +651,8 @@ function change_modulus(A::GPUFiniteFieldMatrix, new_N::Integer)
     else
         @. result.data = A.data
     end
-
-    return unsafe_GPUFiniteFieldMatrix(result, A.rows, A.cols, new_N)
+     
+    return GPUFiniteFieldMatrix(result, new_N, new_rows=A.rows, new_cols=A.cols)
 end
 
 """
@@ -688,4 +668,93 @@ function change_modulus!(A::GPUFiniteFieldMatrix, new_N::Integer)
 
     setfield!(A, :N, new_N)
     return A
+end
+
+function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
+    tid = threadIdx().x
+    bid = blockIdx().x
+    n = size(U, 1)
+    
+    shared_sum = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
+    
+    for i = n:-1:1
+        if tid == 1 && bid == 1
+            sum = b[i]
+            for j = i+1:n
+                sum = (sum - (U[i, j] * x[j]) % N) % N
+                if sum < 0
+                    sum += N
+                end
+            end
+            
+            diag_inv = mod_inv(U[i, i], N)
+            x[i] = (sum * diag_inv) % N
+        end
+        
+        CUDA.sync_threads()
+    end
+    
+    return nothing
+end
+
+function backsubstitution_optimized_gpu(U::GPUFiniteFieldMatrix{T}, b) where T
+    n = U.rows
+    N = U.N
+    x = CUDA.zeros(Int, n)
+    d_b = CuArray(b)
+    
+    @cuda threads=1 blocks=1 backsubstitution_shared_kernel(U.data, x, d_b, N)
+    
+    return Array(x)
+end
+
+function backsubstitution_parallel_kernel(U::CuArray{T, 2}, x, b, N) where T
+    tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+    n = size(U, 1)
+    
+    if tid <= n
+        for i = n:-1:1
+            CUDA.sync_blocks()
+            
+            if tid == i
+                sum = b[i]
+                for j = i+1:n
+                    sum = (sum - (U[i, j] * x[j]) % N) % N
+                    if sum < 0
+                        sum += N
+                    end
+                end
+                
+                diag_inv = mod_inv(U[i, i], N)
+                x[i] = (sum * diag_inv) % N
+            end
+        end
+    end
+    
+    return nothing
+end
+
+function backsubstitution_fully_parallel_gpu(U::GPUFiniteFieldMatrix{T}, b) where T
+    n = U.rows
+    N = U.N
+    x = CUDA.zeros(Int, n)
+    d_b = CuArray(b)
+    
+    threads_per_block = min(256, n)
+    num_blocks = ceil(Int, n / threads_per_block)
+    
+    @cuda threads=threads_per_block blocks=num_blocks backsubstitution_parallel_kernel(U.data, x, d_b, N)
+    
+    return Array(x)
+end
+
+function hensel_pseudoinverse(p, precision, A, T0)
+    i = 1
+    T = T0
+    while i < precision
+        T = 2*T - T * (A*T)
+        i *= 2
+    end
+    R, pi = residue_ring(ZZ, p^precision)
+    return matrix(R, [R(x) for x in Array(T)])
 end

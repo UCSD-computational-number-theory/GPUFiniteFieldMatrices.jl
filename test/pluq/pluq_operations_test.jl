@@ -7,8 +7,8 @@ using LinearAlgebra
 Test row reduction operations on GPUFiniteFieldMatrix.
 This tests both the standard and direct implementations.
 """
-function test_rref_operations()
-    println("Testing RREF operations on GPUFiniteFieldMatrix...")
+function test_pluq_operations()
+    println("Testing PLUQ operations on GPUFiniteFieldMatrix...")
     
     A_data = [1 2 3; 4 5 6; 7 8 9]  # Rank 2
     B_data = [1 0 0; 0 1 0; 0 0 1]  # Identity, full rank
@@ -182,8 +182,8 @@ function test_plup_operations()
 end
 
 # Run all tests
-function test_rref()
-    test_rref_operations()
+function test_pluq()
+    test_pluq_operations()
     test_lu_operations()
     test_plup_operations()
     
@@ -192,5 +192,5 @@ end
 
 # Run the tests if this file is run directly
 if abspath(PROGRAM_FILE) == @__FILE__
-    test_rref()
+    test_pluq()
 end 

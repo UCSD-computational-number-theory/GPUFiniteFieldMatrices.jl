@@ -1,0 +1,176 @@
+Testing basic operations of GPUFiniteFieldMatrix...
+A = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 2 3; 4 5 6; 7 8 9]
+
+B = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[9 8 7; 6 5 4; 3 2 1]
+
+A + B = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[10 10 10; 10 10 10; 10 10 10]
+
+A - B = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[3 5 7; 9 0 2; 4 6 8]
+
+A * B = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[8 2 7; 7 3 10; 6 4 2]
+
+A .* B = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[9 5 10; 2 3 2; 10 5 9]
+
+3 + A = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[4 5 6; 7 8 9; 10 0 1]
+
+A - 3 = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[9 10 0; 1 2 3; 4 5 6]
+
+3 * A = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[3 6 9; 1 4 7; 10 2 5]
+
+-A = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[10 9 8; 7 6 5; 4 3 2]
+
+All basic operations tests passed!
+Testing utility functions of GPUFiniteFieldMatrix...
+identity(Int, 3, 11) = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 0 0; 0 1 0; 0 0 1]
+
+zeros(Int, 2, 3, 11) = 
+2×3 GPUFiniteFieldMatrix modulo 11:
+[0 0 0; 0 0 0]
+
+rand(Int, 2, 2, 11) = 
+2×2 GPUFiniteFieldMatrix modulo 11:
+[1 8; 3 8]
+
+All utility functions tests passed!
+Testing matrix operations of GPUFiniteFieldMatrix...
+G = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 2 3; 0 1 4; 5 6 0]
+
+G^2 = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[5 0 0; 9 3 4; 5 5 6]
+
+G^0 = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 0 0; 0 1 0; 0 0 1]
+
+GPU Matrix Type: Error During Test at /home/ryb/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:196
+  Test threw exception
+  Expression: Array(G0) == I_3
+  UndefVarError: `I_3` not defined in `Main`
+  Suggestion: check for spelling errors or missing imports.
+  Stacktrace:
+   [1] macro expansion
+     @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:676 [inlined]
+   [2] test_matrix_operations()
+     @ Main ~/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:196
+N = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 2 3; 2 4 6; 3 6 9]
+
+GPU Matrix Type: Test Failed at /home/ryb/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:206
+  Expression: !(is_invertible(N))
+
+Stacktrace:
+ [1] macro expansion
+   @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:679 [inlined]
+ [2] test_matrix_operations()
+   @ Main ~/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:206
+ [3] test_gpu_mat()
+   @ Main ~/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:262
+ [4] macro expansion
+   @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:19 [inlined]
+ [5] macro expansion
+   @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:1704 [inlined]
+ [6] macro expansion
+   @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:19 [inlined]
+ [7] macro expansion
+   @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:1704 [inlined]
+ [8] (::var"#3#6")()
+   @ Main ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:18
+All matrix operations tests passed!
+Testing modulus-changing functions of GPUFiniteFieldMatrix...
+A (mod 11) = 
+3×3 GPUFiniteFieldMatrix modulo 11:
+[1 2 3; 4 5 6; 7 8 9]
+
+GPU Matrix Type: Error During Test at /home/ryb/GPUFiniteFieldMatrices.jl/test/runtests.jl:18
+  Got exception outside of a @test
+  type CuArray has no field rows
+  Stacktrace:
+    [1] getproperty
+      @ ./Base.jl:49 [inlined]
+    [2] change_modulus(A::GPUFiniteFieldMatrix{Int64}, new_N::Int64)
+      @ GPUFiniteFieldMatrices ~/GPUFiniteFieldMatrices.jl/src/matrix_mod_N/gpu_mat_type/gpu_mat.jl:647
+    [3] test_modulus_functions()
+      @ Main ~/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:229
+    [4] test_gpu_mat()
+      @ Main ~/GPUFiniteFieldMatrices.jl/test/gpu_mat/basic_operations_test.jl:263
+    [5] macro expansion
+      @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:19 [inlined]
+    [6] macro expansion
+      @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:1704 [inlined]
+    [7] macro expansion
+      @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:19 [inlined]
+    [8] macro expansion
+      @ ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/Test/src/Test.jl:1704 [inlined]
+    [9] (::var"#3#6")()
+      @ Main ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:18
+   [10] (::Base.RedirectStdStream)(thunk::var"#3#6", stream::IOStream)
+      @ Base ./stream.jl:1464
+   [11] #2
+      @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:15 [inlined]
+   [12] (::Base.RedirectStdStream)(thunk::var"#2#5"{IOStream}, stream::IOStream)
+      @ Base ./stream.jl:1464
+   [13] #1
+      @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:14 [inlined]
+   [14] open(::var"#1#4", ::String, ::Vararg{String}; kwargs::@Kwargs{})
+      @ Base ./io.jl:410
+   [15] open(::Function, ::String, ::String)
+      @ Base ./io.jl:407
+   [16] top-level scope
+      @ ~/GPUFiniteFieldMatrices.jl/test/runtests.jl:13
+   [17] include(fname::String)
+      @ Main ./sysimg.jl:38
+   [18] top-level scope
+      @ REPL[3]:1
+   [19] eval
+      @ ./boot.jl:430 [inlined]
+   [20] eval_user_input(ast::Any, backend::REPL.REPLBackend, mod::Module)
+      @ REPL ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/REPL/src/REPL.jl:245
+   [21] repl_backend_loop(backend::REPL.REPLBackend, get_module::Function)
+      @ REPL ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/REPL/src/REPL.jl:342
+   [22] start_repl_backend(backend::REPL.REPLBackend, consumer::Any; get_module::Function)
+      @ REPL ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/REPL/src/REPL.jl:327
+   [23] run_repl(repl::REPL.AbstractREPL, consumer::Any; backend_on_current_task::Bool, backend::Any)
+      @ REPL ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/REPL/src/REPL.jl:483
+   [24] run_repl(repl::REPL.AbstractREPL, consumer::Any)
+      @ REPL ~/.julia/juliaup/julia-1.11.4+0.x64.linux.gnu/share/julia/stdlib/v1.11/REPL/src/REPL.jl:469
+   [25] (::Base.var"#1150#1152"{Bool, Symbol, Bool})(REPL::Module)
+      @ Base ./client.jl:446
+   [26] #invokelatest#2
+      @ ./essentials.jl:1055 [inlined]
+   [27] invokelatest
+      @ ./essentials.jl:1052 [inlined]
+   [28] run_main_repl(interactive::Bool, quiet::Bool, banner::Symbol, history_file::Bool, color_set::Bool)
+      @ Base ./client.jl:430
+   [29] repl_main
+      @ ./client.jl:567 [inlined]
+   [30] _start()
+      @ Base ./client.jl:541
+Test Summary:             | Pass  Fail  Error  Total   Time
+GPUFiniteFieldMatrices.jl |   16     1      2     19  19.5s
+  GPU Matrix Type         |   16     1      2     19  19.5s

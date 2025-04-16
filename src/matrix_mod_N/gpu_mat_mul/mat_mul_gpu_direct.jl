@@ -44,7 +44,8 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
     d_A = A.data
     d_B = B.data
     if C === nothing
-        d_C = CUDA.CuArray{t}(undef, (A_rows, B_cols))
+        T = eltype(A.data)
+        d_C = CUDA.CuArray{T}(undef, (A_rows, B_cols))
     else
         if C.rows != A_rows || C.cols != B_cols
             throw(MatrixSizeMismatchException(
@@ -55,6 +56,7 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
         d_C = C.data
     end
     
+    REGIME = "⊡"
     if REGIME == "⊡"
         # Simple matrix multiplication
         if C === nothing
@@ -65,16 +67,16 @@ function mat_mul_gpu_type(A::GPUFiniteFieldMatrix, B::GPUFiniteFieldMatrix, mod_
         end
     elseif REGIME == "⊟"
         # Use the no_ops kernel
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_padded_cols, TILE_WIDTH), div(A_padded_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_padded_rows, type)
+        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
     elseif REGIME == "⊞"
         # Use the ops kernel that handles overflow
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_padded_cols, TILE_WIDTH), div(A_padded_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_padded_rows, type, MAX_OPS)
+        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)
     else
         error("Invalid regime: $REGIME")
     end
     
     if C === nothing
-        return GPUFiniteFieldMatrix(d_C, A_rows, B_cols, N)
+        return GPUFiniteFieldMatrix(d_C, N, new_rows = A_rows, new_cols = B_cols)
     else
         return C
     end
@@ -136,10 +138,10 @@ function mat_mul_type_inplace!(C::GPUFiniteFieldMatrix, A::GPUFiniteFieldMatrix,
         d_C = mod.(d_C, N)
     elseif REGIME == "⊟"
         # Use the no_ops kernel
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_padded_cols, TILE_WIDTH), div(A_padded_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_padded_rows, type)
+        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
     elseif REGIME == "⊞"
         # Use the ops kernel that handles overflow
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_padded_cols, TILE_WIDTH), div(A_padded_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_padded_rows, type, MAX_OPS)
+        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)
     else
         error("Invalid regime: $REGIME")
     end

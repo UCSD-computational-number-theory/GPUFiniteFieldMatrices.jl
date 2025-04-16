@@ -227,7 +227,7 @@ function find_pivot(d_A, A_rows, row, col)
     return row
 end
 
-function find_pivot_idx(d_A, A_rows, row, col)
+function find_pivot_idx(d_A::CUDA.CuArray, A_rows::Int, row::Int, col::Int)
     CUDA.allowscalar() do 
         return argmax(Array(d_A[row:A_rows,col]))
     end
