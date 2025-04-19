@@ -1,12 +1,12 @@
-using CUDA, LinearAlgebra, IterTools
-include("../gpu_mat_type/gpu_mat.jl")
+#using CUDA, LinearAlgebra, IterTools
+#include("../gpu_mat_type/gpu_mat.jl")
 
 """
     mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, [mod_N])
 
 Matrix multiplication that works directly with GpuMatrixModN objects.
 """
-function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1, REGIME="⊠", type=nothing, C=nothing)
+function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1; REGIME="⊠", type=nothing, C=nothing)
     # TODO: Put if statement to check size of C matches size of A x B.
     # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
     # Use the provided modulus if available, otherwise use A's modulus
@@ -63,16 +63,18 @@ function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1,
             d_C = d_A * d_B
             d_C = mod.(d_C, N)
         else
-            C.data = mod.(d_A * d_B, N)
+            C.data .= mod.(d_A * d_B, N)
         end
-    elseif REGIME == "⊟"
+    else
+        error("Matrix multiplication of ($A_rows,$A_cols) x ($B_rows,$B_cols) not justified modulo $N for data type $type")
+    #=elseif REGIME == "⊟"
         # Use the no_ops kernel
         @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
     elseif REGIME == "⊞"
         # Use the ops kernel that handles overflow
         @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)
     else
-        error("Invalid regime: $REGIME")
+        error("Invalid regime: $REGIME")=#
     end
     
     if C === nothing
@@ -117,6 +119,7 @@ function mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixM
     end
     
     MAX_OPS = find_max_ops(type, N)
+    println("MAX_OPS: $MAX_OPS")
     
     if REGIME == "⊠"
         if MAX_OPS >= A_cols # equal to B_rows
@@ -134,16 +137,17 @@ function mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixM
     
     if REGIME == "⊡"
         # Simple matrix multiplication
-        d_C = d_A * d_B
-        d_C = mod.(d_C, N)
-    elseif REGIME == "⊟"
+        #d_C = d_A * d_B
+        LinearAlgebra.mul!(d_C,d_A,d_B)
+        d_C .= mod.(d_C, N)
+        #=elseif REGIME == "⊟"
         # Use the no_ops kernel
         @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
     elseif REGIME == "⊞"
         # Use the ops kernel that handles overflow
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)
+        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)=#
     else
-        error("Invalid regime: $REGIME")
+        error("Matrix multiplication of ($A_rows,$A_cols) x ($B_rows,$B_cols) not justified modulo $N for data type $type")
     end
     
     # Copy result directly to C's GPU memory

@@ -1,8 +1,8 @@
-using CUDA, LinearAlgebra, IterTools
-include("mat_mul_plain.jl")
-include("mat_mul_no_ops.jl")
-include("mat_mul_ops.jl")
-include("../gpu_mat_type/gpu_mat.jl")
+#using CUDA, LinearAlgebra, IterTools
+#include("mat_mul_plain.jl")
+#include("mat_mul_no_ops.jl")
+#include("mat_mul_ops.jl")
+#include("../gpu_mat_type/gpu_mat.jl")
 
 const global TILE_WIDTH = 32
 

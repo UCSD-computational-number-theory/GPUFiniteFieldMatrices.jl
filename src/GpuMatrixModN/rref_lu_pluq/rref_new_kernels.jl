@@ -1,8 +1,8 @@
-using CUDA, LinearAlgebra
+#using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 2
-const global TYPE = Float32
-const global DEBUG = false
+#const global TILE_WIDTH = 2
+#const global TYPE = Float32
+#const global DEBUG = false
 
 function rref_gpu(A, P)
 

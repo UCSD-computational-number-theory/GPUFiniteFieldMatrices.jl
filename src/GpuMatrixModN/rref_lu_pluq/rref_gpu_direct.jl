@@ -1,6 +1,6 @@
-using CUDA, LinearAlgebra
-include("rref_new_kernels.jl")
-include("../gpu_mat_type/gpu_mat.jl")
+#using CUDA, LinearAlgebra
+#include("rref_new_kernels.jl")
+#include("../gpu_mat_type/gpu_mat.jl")
 
 """
     rref_gpu_type(A::GpuMatrixModN, [mod_N])

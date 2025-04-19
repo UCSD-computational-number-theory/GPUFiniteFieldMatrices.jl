@@ -1,4 +1,4 @@
-using CUDA, LinearAlgebra
+#using CUDA, LinearAlgebra
 
 const TILE_WIDTH = 32
 const DEFAULT_TYPE = Float32
@@ -121,7 +121,13 @@ function find_max_ops(type, N)
         error("Input type is not recognized.")
     end
 
-    return floor(Int, (2^bits - 1) / N^2) - 1
+    if 64 ≤ bits
+        floor(BigInt, (BigInt(2)^bits - 1) / N^2) - 1
+    else
+        floor(Int, (2^bits - 1) / N^2) - 1    
+    end
+
+    
 end
 
 Base.size(A::GpuMatrixModN) = (A.rows, A.cols)
@@ -423,8 +429,9 @@ function add!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integ
     end
 
     # TODO: Time them
-    # @. C.data = mod(A.data + B.data, N)
-    mod.(add!(C.data, A.data, B.data), N)
+    # TODO: figure out how to get the dots to fuse
+    C.data .= mod.(A.data .+ B.data, N)
+    #mod.(add!(C.data, A.data, B.data), N)
 
     return C
 end
@@ -449,8 +456,9 @@ function sub!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integ
         ))
     end
     
-    # @. C.data = mod(A.data - B.data, N)
-    mod.(sub!(C.data, A.data, B.data), N)
+    #TODO: fuse the dots
+    C.data .= mod.(A.data - B.data, N)
+    #mod.(sub!(C.data, A.data, B.data), N)
     
     return C
 end
@@ -500,7 +508,7 @@ function negate!(B::GpuMatrixModN, A::GpuMatrixModN, mod_N::Integer=-1)
         ))
     end
 
-    B.data = mod.(-A.data .+ N, N)
+    B.data .= mod.(-A.data .+ N, N)
     return B
 end
 
@@ -644,7 +652,8 @@ Creates a new GpuMatrixModN with the same values as A but with a different modul
 All elements are reduced modulo new_N.
 """
 function change_modulus(A::GpuMatrixModN, new_N::Integer)
-    result = CUDA.zeros(eltype(A.data), A.data.rows, A.data.cols, new_N)
+    (dataRows,dataCols) = size(A.data)
+    result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows, dataCols, new_N)
     
     if new_N < A.N
         @. result.data = mod(A.data, new_N)
@@ -652,7 +661,7 @@ function change_modulus(A::GpuMatrixModN, new_N::Integer)
         @. result.data = A.data
     end
      
-    return GpuMatrixModN(result, new_N, new_rows=A.rows, new_cols=A.cols)
+    return GpuMatrixModN(result.data, new_N, new_rows=A.rows, new_cols=A.cols)
 end
 
 """
@@ -661,13 +670,14 @@ end
 Changes the modulus of A in-place to new_N.
 All elements are reduced modulo new_N.
 """
-function change_modulus!(A::GpuMatrixModN, new_N::Integer)
+#TODO: we are not allowed to actually change an immutable struct.
+#This returns a new struct, but modifies the underlying data
+function change_modulus_no_alloc!(A::GpuMatrixModN, new_N::Integer)
     if new_N < A.N
         @. A.data = mod(A.data, new_N)
     end
 
-    setfield!(A, :N, new_N)
-    return A
+    return GpuMatrixModN(A.data,new_N,new_rows=A.rows,new_cols=A.cols)
 end
 
 function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T

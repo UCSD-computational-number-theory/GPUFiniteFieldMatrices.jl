@@ -23,3 +23,7 @@ docs/site/
 # environment.
 Manifest.toml
 *.csv
+
+
+*.swp
+test/test_results.log

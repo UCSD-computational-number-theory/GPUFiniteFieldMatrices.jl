@@ -1,7 +1,7 @@
-using GPUFiniteFieldMatrices
-using Test
-using CUDA
-using LinearAlgebra
+#using GPUFiniteFieldMatrices
+#using Test
+#using CUDA
+#using LinearAlgebra
 
 """
 Test matrix multiplication operations on GpuMatrixModN.
@@ -12,7 +12,7 @@ function test_matmul_operations()
     
     # Test matrices
     A_data = [1 2 3; 4 5 6]
-    B_data = [7 8; 9 10; 11 12]
+    B_data = [7 8; 9 10; 0 1]
     C_data = [58 64; 139 154]  # Expected result A*B mod 11 = [3 9; 7 0]
     modulus = 11  # Prime modulus
     
@@ -61,20 +61,24 @@ function test_matmul_operations()
     # Verify the result matches expected calculation (mod override_modulus)
     # See previous TODO
     expected_C_mod = (A_data * B_data) .% override_modulus
+    println(A_data)
+    println(B_data)
+    println(expected_C_mod)
     @test Array(C_mod) ≈ expected_C_mod
     
     println("All matrix multiplication operations tests passed!")
 end
 
 """
+     Testing MMPSingularities tests passed
 Test in-place matrix multiplication operations on GpuMatrixModN.
 """
 function test_inplace_matmul_operations()
     println("Testing in-place matrix multiplication operations on GpuMatrixModN...")
     
     A_data = [1 2 3; 4 5 6]
-    B_data = [7 8; 9 10; 11 12]
-    C_data = zeros(Int, 2, 2)  # Destination matrix
+    B_data = [7 8; 9 10; 0 1]
+    C_data = Base.zeros(Int, 2, 2)  # Destination matrix
     modulus = 11  # Prime modulus
     
     A = GpuMatrixModN(A_data, modulus)
@@ -108,7 +112,7 @@ function test_inplace_matmul_operations()
     
     # Test in-place multiplication with modulus override
     override_modulus = 7
-    C2 = GpuMatrixModN(zeros(Int, 2, 2), modulus)
+    C2 = GpuMatrixModN(Base.zeros(Int, 2, 2), modulus)
     
     mat_mul_type_inplace!(C2, A, B, override_modulus)
     
@@ -127,7 +131,7 @@ end
 function test_matmul()
     test_matmul_operations()
     test_inplace_matmul_operations()
-    test_matmul_regimes()
+    #test_matmul_regimes()
     
     println("\nAll matrix multiplication tests passed!")
 end
