@@ -16,6 +16,7 @@ include("GpuMatrixModN/rref_lu_pluq/rref_gpu_direct.jl")
 include("GpuMatrixModN/kernel_mul/mat_mul_gpu_direct.jl")
 #include("GpuMatrixModN/kernel_mul/mat_mul_ops.jl")
 #include("GpuMatrixModN/hensel_lifting/hensel.jl")
+include("GpuMatrixModN/kernel_mul/stripe_mul.jl")
 
 # Export the main type and its operations
 export GpuMatrixModN, is_invertible, inverse, unsafe_GpuMatrixModN

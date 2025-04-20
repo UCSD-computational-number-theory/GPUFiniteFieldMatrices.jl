@@ -14,6 +14,7 @@ include("GpuMatrixModN/inplace_operations_test.jl")
 include("GpuMatrixModN/pluq_operations_test.jl")
 include("GpuMatrixModN/matmul_operations_test.jl")
 include("GpuMatrixModN/benchmark_test.jl")
+include("GpuMatrixModN/stripe_mul_test.jl")
 
 
 #open("test_results.log", "w") do io
@@ -38,6 +39,7 @@ include("GpuMatrixModN/benchmark_test.jl")
                 # Matrix Multiplication Tests
                 @testset "Matrix Multiplication" begin
                     test_matmul()
+                    test_stripe_mul()
                 end
             end 
 #        end

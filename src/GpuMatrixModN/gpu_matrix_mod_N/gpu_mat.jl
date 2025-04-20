@@ -53,18 +53,28 @@ struct GpuMatrixModN{T}
     """
     function GpuMatrixModN(A::AbstractMatrix{T}, N::Int; elem_type::DataType=DEFAULT_TYPE, mod=true, new_rows=nothing, new_cols=nothing) where T
         rows, cols = size(A)
+        #TODO: get this to actually use elem_type
         
         padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
         padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
         
-        data = CUDA.CuArray{T}(undef, (padded_rows, padded_cols))
-        
         # Initialize the padded areas to zero
-        data .= T(0)
+        data = CUDA.fill(zero(elem_type),padded_rows,padded_cols) 
+        # CUDA.CuArray{elem_type}(undef, (padded_rows, padded_cols))
         
         A_inds = CartesianIndices(A)
         data_inds = CartesianIndices((1:rows, 1:cols))
-        copyto!(data, data_inds, A, A_inds)
+
+        # The desired behavior is for this to error if the conversion is
+        # impossible
+        converted = convert.(elem_type,A)
+
+        #TODO: We would like to use an in-place version:
+        #`copyto!(data, data_inds, converted, A_inds)`
+        #but this doesn't seem to be implemented in CUDA.jl.
+        #For now, we can deal with a little extra (cpu) allocation 
+        #in creation of matrices.
+        data[data_inds] = converted[A_inds]
         
         if mod
             threads = 32
@@ -73,9 +83,9 @@ struct GpuMatrixModN{T}
         end
 
         if new_rows != nothing && new_cols != nothing
-            new{T}(data, new_rows, new_cols, N)
+            new{elem_type}(data, new_rows, new_cols, N)
         else
-            new{T}(data, rows, cols, N)
+            new{elem_type}(data, rows, cols, N)
         end
     end
 
@@ -161,7 +171,8 @@ end
 
 function Base.display(A::GpuMatrixModN)
     println("$(A.rows)×$(A.cols) GpuMatrixModN modulo $(A.N):")
-    println(Array(A))
+    print("Data: ")
+    display(Array(A))
 end
 
 # Basic arithmetic operations with delayed reduction
