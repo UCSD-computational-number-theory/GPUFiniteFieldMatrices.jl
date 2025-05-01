@@ -169,7 +169,7 @@ function Base.show(io::IO, A::GpuMatrixModN)
     show(io, Array(A))
 end
 
-function Base.display(A::GpuMatrixModN)
+function Base.show(io::IO, ::MIME"text/plain", A::GpuMatrixModN)
     println("$(A.rows)×$(A.cols) GpuMatrixModN modulo $(A.N):")
     print("Data: ")
     display(Array(A))
@@ -577,6 +577,7 @@ end
 In-place scalar multiplication: B = A * s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
+#TODO: change to lmul! / rmul!
 function scalar_multiply!(B::GpuMatrixModN, A::GpuMatrixModN, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
