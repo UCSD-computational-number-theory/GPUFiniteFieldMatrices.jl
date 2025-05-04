@@ -6,9 +6,9 @@ function test_allocations()
     B_data = Base.rand(0:10,n,n)
     x_data = Base.rand(0:10,n)
 
-    A = GpuMatrixModN(A_data,11)
-    B = GpuMatrixModN(B_data,11)
-    x = GpuVectorModN(x_data,11)
+    A = CuModMatrix(A_data,11)
+    B = CuModMatrix(B_data,11)
+    x = CuModVector(x_data,11)
 
     C = GPUFiniteFieldMatrices.zeros(Float32,n,n,11)
     z = GPUFiniteFieldMatrices.zeros(Float32,n,11)

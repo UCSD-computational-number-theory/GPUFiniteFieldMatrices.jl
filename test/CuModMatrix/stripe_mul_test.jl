@@ -2,8 +2,8 @@
 function test_stripe_mul()
     A_data = Base.rand(1:100,100,100)
     B_data = Base.rand(1:100,100,100)
-    A = GpuMatrixModN(A_data,2^11,elem_type=Float32)
-    B = GpuMatrixModN(B_data,2^11,elem_type=Float32)
+    A = CuModMatrix(A_data,2^11,elem_type=Float32)
+    B = CuModMatrix(B_data,2^11,elem_type=Float32)
     C = GPUFiniteFieldMatrices.zeros(Float32,100,100,2^11)
     
     GPUFiniteFieldMatrices.stripe_mul!(C,A,B)
@@ -17,8 +17,8 @@ function test_stripe_mul()
     A_data[5,5] = 11^7 - 5
     B_data[95,95] = 11^7 - 23
 
-    A = GpuMatrixModN(A_data,11^7,elem_type=Float64)
-    B = GpuMatrixModN(B_data,11^7,elem_type=Float64)
+    A = CuModMatrix(A_data,11^7,elem_type=Float64)
+    B = CuModMatrix(B_data,11^7,elem_type=Float64)
     C = GPUFiniteFieldMatrices.zeros(Float64,100,100,11^7)
     
     GPUFiniteFieldMatrices.stripe_mul!(C,A,B)
@@ -36,8 +36,8 @@ function test_stripe_mul()
     A_data[5,5] = 11^7 - 5
     B_data[95,95] = 11^7 - 23
 
-    A = GpuMatrixModN(A_data,11^7,elem_type=Float64)
-    B = GpuMatrixModN(B_data,11^7,elem_type=Float64)
+    A = CuModMatrix(A_data,11^7,elem_type=Float64)
+    B = CuModMatrix(B_data,11^7,elem_type=Float64)
     C = GPUFiniteFieldMatrices.zeros(Float64,s,s,11^7)
     
     println("Multiplying on the GPU...")

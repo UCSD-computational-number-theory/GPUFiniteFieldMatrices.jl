@@ -1,5 +1,5 @@
 
-#function gemv!(transpose::Bool,alpha::Integer,A::GpuMatrixModN,x::GpuVectorModN,beta::Integer,y::GpuVectorModN)
+#function gemv!(transpose::Bool,alpha::Integer,A::CuModMatrix,x::CuModVector,beta::Integer,y::CuModVector)
 #
 #end
 
@@ -28,7 +28,7 @@ Also does not check to see if the modulus of the varios matrices agree
 
 Since we are working mod N, `alpha` and `beta` must be integers
 """
-function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::GpuMatrixModN,B::GpuMatrixModN,beta::Integer,C::GpuMatrixModN)
+function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModMatrix,B::CuModMatrix,beta::Integer,C::CuModMatrix)
 
     tAchar = transposeA ? 'Y' : 'N'
     tBchar = transposeB ? 'Y' : 'N'
@@ -46,7 +46,7 @@ Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
 #the ".data" stuff won't work until then
-function stripe_mul!(z::GpuVectorModN,A::GpuMatrixModN,x::GpuVectorModN)
+function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
 
     if A.N != z.N || z.N != z.N 
         throw(ArgumentError("Mismatched modulus in matmul"))
@@ -106,7 +106,7 @@ end
 Matrix multiplication mod N based on stripes.
 
 """
-function stripe_mul!(C::GpuMatrixModN,A::GpuMatrixModN,B::GpuMatrixModN)
+function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix)
 
     if A.N != B.N || B.N != C.N 
         throw(ArgumentError("Mismatched modulus in matmul"))

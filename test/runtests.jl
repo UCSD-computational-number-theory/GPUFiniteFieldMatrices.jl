@@ -9,20 +9,20 @@ using GPUFiniteFieldMatrices
 # Add the current directory to Julia's load path
 #Pkg.develop(path=".")
 
-include("GpuMatrixModN/basic_operations_test.jl")
-include("GpuMatrixModN/inplace_operations_test.jl")
-include("GpuMatrixModN/pluq_operations_test.jl")
-include("GpuMatrixModN/matmul_operations_test.jl")
-include("GpuMatrixModN/benchmark_test.jl")
-include("GpuMatrixModN/stripe_mul_test.jl")
-include("GpuMatrixModN/allocations_test.jl")
-include("GpuMatrixModN/timing_test.jl")
+include("CuModMatrix/basic_operations_test.jl")
+include("CuModMatrix/inplace_operations_test.jl")
+include("CuModMatrix/pluq_operations_test.jl")
+include("CuModMatrix/matmul_operations_test.jl")
+include("CuModMatrix/benchmark_test.jl")
+include("CuModMatrix/stripe_mul_test.jl")
+include("CuModMatrix/allocations_test.jl")
+include("CuModMatrix/timing_test.jl")
 
 
 #open("test_results.log", "w") do io
 #    redirect_stdout(io) do
 #        redirect_stderr(io) do
-            @testset "GpuMatrixModN.jl" begin
+            @testset "CuModMatrix.jl" begin
                 # GPU Matrix Type Tests
                 @testset "GPU Matrix Type" begin
                     test_gpu_mat()

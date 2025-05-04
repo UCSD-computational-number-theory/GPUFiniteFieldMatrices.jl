@@ -1,10 +1,19 @@
 #using CUDA, LinearAlgebra
 
 #TODO: refactors:
-#      GpuArrayModN --> GpuModNArray
-#      Matrix***Exception --> GpuModNArray***Exception
+#      [v]GpuArrayModN --> CuModArray 
+#      [v]GpuMatrixModN --> CuModMatrix
+#      [v]GpuVectorModN --> CuModVector
+#
+#      MatrixSizeMismatchException --> CuModArraySizeMismatchException
+#      MatrixModulusMismatchException --> CuModArrayModulusMismatchException
+#
+#      MatrixTooLargeException --> CuModMatrixTooLargeException
+#      MatrixNotSquareException --> CuModMatrixNotSquareException
+#      MatrixModulusNotPrimeException --> CuModMatrixModulusNotPrimeException
+#
 #      multiply! --> mul!
-#      scalar_multiply! --> mul!, rmul!, or lmul!
+#      scalar_multiply! --> mul! rmul! and lmul!
 #
 #      Also: delete a bunch of comments
 
@@ -40,7 +49,7 @@ function mod_kernel!(data, N)
 end
 
 """
-    GpuArrayModN{T}
+    CuModArray{T}
 
 A matrix over a finite field mod N, implemented using CuArray. The internal representation
 pads to multiples of TILE_WIDTH (32) for efficient GPU computation.
@@ -48,18 +57,18 @@ pads to multiples of TILE_WIDTH (32) for efficient GPU computation.
 Note matrices over the permitted size for efficient matmul may be created, but matmul 
 will throw an exception if these matrices are multiplied.
 """
-struct GpuArrayModN{T,D} <: AbstractArray{T,D}
+struct CuModArray{T,D} <: AbstractArray{T,D}
     data::CuArray{T, D}  # Padded CuArray data
     size::Dims{D}        # True dimensions
     N::Int               # The modulus N
     
     """
-        GpuArrayModN{T,D}(A::AbstractMatrix{T}, N)
+        CuModArray{T,D}(A::AbstractMatrix{T}, N)
     
     General contructor from abstract CPU matrix.
     Pads data on the GPU to fit a multiple of 32.
     """
-    function GpuArrayModN{T,D}(A::AbstractArray{S,D}, N::Int; mod=true, new_size=nothing) where {T,D,S}
+    function CuModArray{T,D}(A::AbstractArray{S,D}, N::Int; mod=true, new_size=nothing) where {T,D,S}
 
         pad(d) = ceil(Int, d / TILE_WIDTH) * TILE_WIDTH
 
@@ -102,12 +111,12 @@ struct GpuArrayModN{T,D} <: AbstractArray{T,D}
     end
 
     """
-        GpuArrayModN{T,D}(data::CuArray, N)
+        CuModArray{T,D}(data::CuArray, N)
 
     Wrapper constructor for results already on the GPU.
     Does not pad. 
     """
-    function GpuArrayModN{T,D}(A::CuArray{T, D}, N::Int; mod=false, new_size=nothing) where {T,D}
+    function CuModArray{T,D}(A::CuArray{T, D}, N::Int; mod=false, new_size=nothing) where {T,D}
         data = A
         #rows, cols = size(data)
 
@@ -119,27 +128,27 @@ struct GpuArrayModN{T,D} <: AbstractArray{T,D}
     end
 end
 
-function GpuArrayModN(A::AbstractArray{T,D}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where {T,D}
-    GpuArrayModN{elem_type,D}(A,N; mod=mod,new_size=new_size)
+function CuModArray(A::AbstractArray{T,D}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where {T,D}
+    CuModArray{elem_type,D}(A,N; mod=mod,new_size=new_size)
 end
 
-const GpuMatrixModN{T} = GpuArrayModN{T,2}
-const GpuVectorModN{T} = GpuArrayModN{T,1}
+const CuModMatrix{T} = CuModArray{T,2}
+const CuModVector{T} = CuModArray{T,1}
 
-function GpuMatrixModN(A::AbstractMatrix{T}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where T
-    GpuArrayModN{elem_type,2}(A,N; mod=mod,new_size=new_size)
+function CuModMatrix(A::AbstractMatrix{T}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where T
+    CuModArray{elem_type,2}(A,N; mod=mod,new_size=new_size)
 end
 
-function GpuMatrixModN(A::CuArray{T, 2}, N::Int; mod=false, new_size=nothing) where {T}
-    GpuArrayModN{T,2}(A,N,mod=mod,new_size=new_size)
+function CuModMatrix(A::CuArray{T, 2}, N::Int; mod=false, new_size=nothing) where {T}
+    CuModArray{T,2}(A,N,mod=mod,new_size=new_size)
 end
 
-function GpuVectorModN(A::AbstractVector{T}, N::Int; mod=false, new_size=nothing,elem_type=DEFAULT_TYPE) where T
-    GpuArrayModN{elem_type,1}(A,N; mod=mod,new_size=new_size)
+function CuModVector(A::AbstractVector{T}, N::Int; mod=false, new_size=nothing,elem_type=DEFAULT_TYPE) where T
+    CuModArray{elem_type,1}(A,N; mod=mod,new_size=new_size)
 end
 
-function GpuVectorModN(A::CuArray{T, 1}, N::Int; mod=false, new_size=nothing) where {T}
-    GpuArrayModN{T,1}(A,N,mod=mod,new_size=new_size)
+function CuModVector(A::CuArray{T, 1}, N::Int; mod=false, new_size=nothing) where {T}
+    CuModArray{T,1}(A,N,mod=mod,new_size=new_size)
 end
 
 """
@@ -176,38 +185,38 @@ function find_max_ops(type, N)
     
 end
 
-Base.size(A::GpuArrayModN) = A.size
-Base.size(A::GpuArrayModN,i::Int) = A.size[i]
+Base.size(A::CuModArray) = A.size
+Base.size(A::CuModArray,i::Int) = A.size[i]
 
-rows(A::GpuArrayModN{T,2}) where T = size(A)[1]
-cols(A::GpuArrayModN{T,2}) where T = size(A)[2]
+rows(A::CuModArray{T,2}) where T = size(A)[1]
+cols(A::CuModArray{T,2}) where T = size(A)[2]
 
-Base.length(A::GpuArrayModN{T,1}) where T = size(A)[1]
-Base.length(A::GpuArrayModN{T,2}) where T = rows(A)*cols(A)
-Base.length(A::GpuArrayModN) = prod(size(A))
+Base.length(A::CuModArray{T,1}) where T = size(A)[1]
+Base.length(A::CuModArray{T,2}) where T = rows(A)*cols(A)
+Base.length(A::CuModArray) = prod(size(A))
 
 # User needs to do CUDA.@allowscalar to use these
 #
 # Also, 3D indexing is currently not supported because we have no
 # use cases.
-Base.getindex(A::GpuArrayModN, i::Int) = A.data[i]
-Base.getindex(A::GpuArrayModN, i::Int, j::Int) = A.data[i, j]
-Base.setindex!(A::GpuArrayModN, v, i::Int, j::Int) = A.data[i, j] = mod(v, A.N)
-Base.getindex(A::GpuArrayModN, I::AbstractArray{Int}, J::AbstractArray{Int}) = 
-    GpuArrayModN(Array(A.data[I, J]), A.N)
-Base.getindex(A::GpuArrayModN, I::AbstractArray{Int}, j::Int) = 
-    GpuArrayModN(reshape(Array(A.data[I, j]), length(I), 1), A.N)
-Base.getindex(A::GpuArrayModN, i::Int, J::AbstractArray{Int}) = 
-    GpuArrayModN(reshape(Array(A.data[i, J]), 1, length(J)), A.N)
+Base.getindex(A::CuModArray, i::Int) = A.data[i]
+Base.getindex(A::CuModArray, i::Int, j::Int) = A.data[i, j]
+Base.setindex!(A::CuModArray, v, i::Int, j::Int) = A.data[i, j] = mod(v, A.N)
+Base.getindex(A::CuModArray, I::AbstractArray{Int}, J::AbstractArray{Int}) = 
+    CuModArray(Array(A.data[I, J]), A.N)
+Base.getindex(A::CuModArray, I::AbstractArray{Int}, j::Int) = 
+    CuModArray(reshape(Array(A.data[I, j]), length(I), 1), A.N)
+Base.getindex(A::CuModArray, i::Int, J::AbstractArray{Int}) = 
+    CuModArray(reshape(Array(A.data[i, J]), 1, length(J)), A.N)
 
 # Convert back to CPU array, with padding
 # Unsafe because there is no guarantee that the padding is zero
-function unsafe_Array(A::GpuArrayModN)
+function unsafe_Array(A::CuModArray)
     Array(A.data)
 end
 
 # Convert back to CPU array, without padding
-function Base.Array(A::GpuArrayModN) 
+function Base.Array(A::CuModArray) 
      
     rangesize = map(x -> 1:x,size(A))
     inds = CartesianIndices(rangesize)
@@ -215,46 +224,46 @@ function Base.Array(A::GpuArrayModN)
 end
 
 # Display function
-function Base.show(io::IO, A::GpuArrayModN)
-    println(io, "$(join(string.(size(A)),"×")) GpuArrayModN modulo $(A.N):")
+function Base.show(io::IO, A::CuModArray)
+    println(io, "$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
 
     # Note this does not display the padding
     println(io, Array(A))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", A::GpuArrayModN)
-    println("$(join(string.(size(A)),"×")) GpuArrayModN modulo $(A.N):")
+function Base.show(io::IO, ::MIME"text/plain", A::CuModArray)
+    println("$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
     Base.print_matrix(io, Array(A))
 end
 
-function Base.show(io::IO, A::GpuVectorModN)
-    println(io, "$(join(string.(size(A)),"×")) GpuVectorModN modulo $(A.N):")
+function Base.show(io::IO, A::CuModVector)
+    println(io, "$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
 
     # Note this does not display the padding
     println(io, Array(A))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", A::GpuVectorModN)
-    println("$(join(string.(size(A)),"×")) GpuVectorModN modulo $(A.N):")
+function Base.show(io::IO, ::MIME"text/plain", A::CuModVector)
+    println("$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
     Base.print_matrix(io, Array(A))
 end
 
-function Base.show(io::IO, A::GpuMatrixModN)
-    println(io, "$(join(string.(size(A)),"×")) GpuMatrixModN modulo $(A.N):")
+function Base.show(io::IO, A::CuModMatrix)
+    println(io, "$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
 
     # Note this does not display the padding
     println(io, Array(A))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", A::GpuMatrixModN)
-    println("$(join(string.(size(A)),"×")) GpuMatrixModN modulo $(A.N):")
+function Base.show(io::IO, ::MIME"text/plain", A::CuModMatrix)
+    println("$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
     Base.print_matrix(io, Array(A))
 end
 
 # Basic arithmetic operations with greedy reduction
 import Base: +, -, *
 
-function +(A::GpuArrayModN, B::GpuArrayModN)
+function +(A::CuModArray, B::CuModArray)
     if A.N != B.N
         error("Matrices must have the same modulus N")
     end
@@ -263,10 +272,10 @@ function +(A::GpuArrayModN, B::GpuArrayModN)
     end
     
     result = mod.(A.data + B.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function -(A::GpuArrayModN, B::GpuArrayModN)
+function -(A::CuModArray, B::CuModArray)
     if A.N != B.N
         error("Matrices must have the same modulus N")
     end
@@ -275,39 +284,39 @@ function -(A::GpuArrayModN, B::GpuArrayModN)
     end
     
     result = mod.(A.data - B.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
 # Scalar operations
-function +(a::Number, A::GpuArrayModN)
+function +(a::Number, A::CuModArray)
     result = mod.(a .+ A.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function +(A::GpuArrayModN, a::Number)
+function +(A::CuModArray, a::Number)
     a + A
 end
 
-function -(a::Number, A::GpuArrayModN)
+function -(a::Number, A::CuModArray)
     result = mod.(a .- A.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function -(A::GpuArrayModN, a::Number)
+function -(A::CuModArray, a::Number)
     result = mod.(A.data .- a, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function *(a::Number, A::GpuArrayModN)
+function *(a::Number, A::CuModArray)
     result = mod.(a .* A.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function *(A::GpuArrayModN, a::Number)
+function *(A::CuModArray, a::Number)
     a * A
 end
 
-function *(A::GpuMatrixModN, B::GpuMatrixModN)
+function *(A::CuModMatrix, B::CuModMatrix)
     if A.N != B.N
         throw(MatrixSizeMismatchException(
             "Matrices must have the same modulus N"
@@ -318,7 +327,7 @@ function *(A::GpuMatrixModN, B::GpuMatrixModN)
     mat_mul_gpu_type(A, B)
 end
 
-function Base.broadcasted(::typeof(*), A::GpuArrayModN, B::GpuArrayModN)
+function Base.broadcasted(::typeof(*), A::CuModArray, B::CuModArray)
     if A.N != B.N
         throw(MatrixModulusMismatchException(
             "Matrices must have the same modulus N."
@@ -334,16 +343,16 @@ function Base.broadcasted(::typeof(*), A::GpuArrayModN, B::GpuArrayModN)
     
     result = mod.(A.data .* B.data, A.N)
     
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
-function -(A::GpuArrayModN)
+function -(A::CuModArray)
     result = mod.(-A.data, A.N)
-    GpuArrayModN(result, A.N, new_size=size(A))
+    CuModArray(result, A.N, new_size=size(A))
 end
 
 # Recursive binary exponentiation algorithm
-function Base.:^(A::GpuMatrixModN, n::Integer)
+function Base.:^(A::CuModMatrix, n::Integer)
     if rows(A) != cols(A) 
         throw(MatrixNotSquareException(
             "Matrix must be square for power operation"
@@ -352,7 +361,7 @@ function Base.:^(A::GpuMatrixModN, n::Integer)
     
     if n == 0
         I_mat = Matrix{eltype(A.data)}(I, rows(A), cols(A))
-        return GpuMatrixModN(I_mat, A.N)
+        return CuModMatrix(I_mat, A.N)
     elseif n < 0
         return inverse(A)^(-n)
     else
@@ -368,13 +377,13 @@ function Base.:^(A::GpuMatrixModN, n::Integer)
 end
 
 """
-    is_invertible_with_inverse(A::GpuMatrixModN)
+    is_invertible_with_inverse(A::CuModMatrix)
 
 Checks if a matrix is invertible. If not, returns
 false and nothing. If it is, returns true and the
 inverse matrix.
 """
-function is_invertible_with_inverse(A::GpuMatrixModN)
+function is_invertible_with_inverse(A::CuModMatrix)
     if !is_invertible(A)
         return false, nothing
     end
@@ -382,11 +391,11 @@ function is_invertible_with_inverse(A::GpuMatrixModN)
 end
 
 """
-    is_invertible(A::GpuMatrixModN)
+    is_invertible(A::CuModMatrix)
 
 Checks if a matrix is invertible mod N.
 """
-function is_invertible(A::GpuMatrixModN{T}) where T
+function is_invertible(A::CuModMatrix{T}) where T
     # assuming isprime(A.N)
     if rows(A) != cols(A)
         return false
@@ -395,11 +404,11 @@ function is_invertible(A::GpuMatrixModN{T}) where T
 end
 
 """
-    inverse(A::GpuMatrixModN)
+    inverse(A::CuModMatrix)
 
 Computes the inverse of a matrix mod N.
 """
-function inverse(A::GpuMatrixModN)
+function inverse(A::CuModMatrix)
     if !is_invertible(A)
         throw(MatrixNotInvertibleException(
             "Matrix is not invertible mod $(A.N)"
@@ -451,7 +460,7 @@ function inverse(A::GpuMatrixModN)
     UL_inv = mod.(U_inv * L_inv, A.N)
     A_inv = mod.(CUDA.transpose(Q) * UL_inv * CUDA.transpose(P), A.N)
 
-    GpuMatrixModN(A_inv, A.N, new_size(n,n))
+    CuModMatrix(A_inv, A.N, new_size(n,n))
 end
 
 # Additional utility functions
@@ -462,13 +471,13 @@ Creates an n×n identity matrix in the finite field.
 """
 function eye(::Type{T}, n::Integer, N::Integer) where T
     padded_size = ceil(Int, n / TILE_WIDTH) * TILE_WIDTH
-    GpuMatrixModN(Matrix{T}(I, n, n), N, new_size=(n, n))
+    CuModMatrix(Matrix{T}(I, n, n), N, new_size=(n, n))
 end
 
 # function Base.identity(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
 #     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
 #     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-#     unsafe_GpuMatrixModN(CUDA.identity(T, padded_rows, padded_cols), N, new_rows=rows, new_cols=cols)
+#     unsafe_CuModMatrix(CUDA.identity(T, padded_rows, padded_cols), N, new_rows=rows, new_cols=cols)
 # end
 
 """
@@ -478,7 +487,7 @@ Creates a vector of zeros of the mod N ring.
 """
 function zeros(::Type{T}, length::Integer, N::Integer) where T
     padded_entries = ceil(Int, length / TILE_WIDTH) * TILE_WIDTH
-    GpuVectorModN(CUDA.zeros(T,padded_entries), N, new_size=(length,))
+    CuModVector(CUDA.zeros(T,padded_entries), N, new_size=(length,))
 end
 
 """
@@ -489,7 +498,7 @@ Creates a matrix of zeros in the mod N ring.
 function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-    GpuMatrixModN(CUDA.zeros(T, padded_rows, padded_cols), N, new_size=(rows,cols))
+    CuModMatrix(CUDA.zeros(T, padded_rows, padded_cols), N, new_size=(rows,cols))
 end
 
 """
@@ -499,7 +508,7 @@ Creates a vector of zeros of the mod N ring.
 """
 function rand(::Type{T}, length::Integer, N::Integer) where T
     padded_entries = ceil(Int, length / TILE_WIDTH) * TILE_WIDTH
-    GpuVectorModN(CUDA.rand(T,padded_entries), N, new_size=(length,))
+    CuModVector(CUDA.rand(T,padded_entries), N, new_size=(length,))
 end
 
 """
@@ -511,7 +520,7 @@ function rand(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
     # TODO: Here even the padding is nonzero.
-    GpuMatrixModN(mod.(CUDA.rand(T, padded_rows, padded_cols), N), N, new_size=(rows,cols))
+    CuModMatrix(mod.(CUDA.rand(T, padded_rows, padded_cols), N), N, new_size=(rows,cols))
 end
 
 # In-place operations with optional modulus
@@ -521,7 +530,7 @@ end
 In-place addition: C = A + B mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of C.N for the modulus.
 """
-function add!(C::GpuArrayModN, A::GpuArrayModN, B::GpuArrayModN, mod_N::Integer=-1)
+function add!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
@@ -549,7 +558,7 @@ end
 In-place subtraction: C = A - B mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of C.N for the modulus.
 """
-function sub!(C::GpuArrayModN, A::GpuArrayModN, B::GpuArrayModN, mod_N::Integer=-1)
+function sub!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
@@ -576,7 +585,7 @@ end
 In-place element-wise multiplication: C = A .* B mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of C.N for the modulus.
 """
-function elementwise_multiply!(C::GpuArrayModN, A::GpuArrayModN, B::GpuArrayModN, mod_N::Integer=-1)
+function elementwise_multiply!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
@@ -600,7 +609,7 @@ end
 In-place negation: B = -A mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-function negate!(B::GpuArrayModN, A::GpuArrayModN, mod_N::Integer=-1)
+function negate!(B::CuModArray, A::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -625,7 +634,7 @@ end
 In-place scalar addition: B = A + s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-function scalar_add!(B::GpuArrayModN, A::GpuArrayModN, s::Number, mod_N::Integer=-1)
+function scalar_add!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -649,7 +658,7 @@ end
 In-place scalar subtraction: B = A - s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-function scalar_subtract!(B::GpuArrayModN, A::GpuArrayModN, s::Number, mod_N::Integer=-1)
+function scalar_subtract!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -674,7 +683,7 @@ In-place scalar multiplication: B = A * s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
 #TODO: change to lmul! / rmul!
-function scalar_multiply!(B::GpuArrayModN, A::GpuArrayModN, s::Number, mod_N::Integer=-1)
+function scalar_multiply!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -699,7 +708,7 @@ end
 In-place copy: B = A. No allocation is performed.
 B is updated with the contents of A.
 """
-function copy!(B::GpuArrayModN, A::GpuArrayModN)
+function copy!(B::CuModArray, A::CuModArray)
     if size(A) != size(B)
         throw(MatrixSizeMismatchException(
             "Matrix dimensions must match"
@@ -716,7 +725,7 @@ end
 Apply modulus to all elements of A in-place.
 If mod_N is provided, it will be used instead of A.N for the modulus.
 """
-function mod_elements!(A::GpuArrayModN, mod_N::Integer=-1)
+function mod_elements!(A::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
     
     @. A.data = mod(A.data, N)
@@ -727,10 +736,10 @@ end
 """
     change_modulus(A, new_N)
 
-Creates a new GpuArrayModN with the same values as A but with a different modulus.
+Creates a new CuModArray with the same values as A but with a different modulus.
 All elements are reduced modulo new_N.
 """
-function change_modulus(A::GpuArrayModN, new_N::Integer)
+function change_modulus(A::CuModArray, new_N::Integer)
     (dataRows,dataCols) = size(A.data)
     result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows, dataCols, new_N)
     
@@ -740,7 +749,7 @@ function change_modulus(A::GpuArrayModN, new_N::Integer)
         @. result.data = A.data
     end
      
-    return GpuArrayModN(result.data, new_N, new_size=size(A))
+    return CuModArray(result.data, new_N, new_size=size(A))
 end
 
 """
@@ -753,12 +762,12 @@ All elements are reduced modulo new_N.
 #This returns a new struct, but modifies the underlying data
 #
 #This will allocate a litte bit the way the constructor is written right now.
-function change_modulus_no_alloc!(A::GpuArrayModN, new_N::Integer)
+function change_modulus_no_alloc!(A::CuModArray, new_N::Integer)
     if new_N < A.N
         @. A.data = mod(A.data, new_N)
     end
 
-    return GpuArrayModN(A.data,new_N,new_size=size(A))
+    return CuModArray(A.data,new_N,new_size=size(A))
 end
 
 """
@@ -766,7 +775,7 @@ end
 
 In-place matrix multiplication: C = A * B mod N.
 """
-function multiply!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN)
+function multiply!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
     
     if (A.N != B.N || A.N != C.N)
         throw(MatrixModulusMismatchException(
@@ -791,11 +800,9 @@ end
 """
     multiply!(z, A, x)
 
-In-place matrix-vector multiplication: C = A * B mod N.
-If mod_N is provided, it will be used instead of C.N for the modulus.
-This still involves some allocation internally due to the use of mat_mul_gpu.
+In-place matrix-vector multiplication: z = A * x mod N.
 """
-function multiply!(z::GpuVectorModN, A::GpuMatrixModN, x::GpuVectorModN)
+function multiply!(z::CuModVector, A::CuModMatrix, x::CuModVector)
     
     if (A.N != z.N || A.N != x.N)
         throw(MatrixModulusMismatchException(
@@ -844,7 +851,7 @@ function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
     return nothing
 end
 
-function backsubstitution_optimized_gpu(U::GpuMatrixModN{T}, b) where T
+function backsubstitution_optimized_gpu(U::CuModMatrix{T}, b) where T
     n = rows(U)
     N = U.N
     x = CUDA.zeros(Int, n)
@@ -881,7 +888,7 @@ function backsubstitution_parallel_kernel(U::CuArray{T, 2}, x, b, N) where T
     return nothing
 end
 
-function backsubstitution_fully_parallel_gpu(U::GpuMatrixModN{T}, b) where T
+function backsubstitution_fully_parallel_gpu(U::CuModMatrix{T}, b) where T
     n = rows(U)
     N = U.N
     x = CUDA.zeros(Int, n)

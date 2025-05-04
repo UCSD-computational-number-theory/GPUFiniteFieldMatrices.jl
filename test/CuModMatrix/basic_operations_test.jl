@@ -4,7 +4,7 @@
 #using LinearAlgebra
 
 """
-Test basic operations of the GpuMatrixModN type.
+Test basic operations of the CuModMatrix type.
 This includes:
 - Initialization and properties
 - Basic arithmetic operations
@@ -12,15 +12,15 @@ This includes:
 - Utility functions
 """
 function test_basic_operations()
-    println("Testing basic operations of GpuMatrixModN...")
+    println("Testing basic operations of CuModMatrix...")
     
     # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11  # Use a prime modulus
-    A = GpuMatrixModN(A_data, modulus)
+    A = CuModMatrix(A_data, modulus)
 
     cuA = CuArray(A_data)
-    Aprime = GpuMatrixModN(cuA, modulus)
+    Aprime = CuModMatrix(cuA, modulus)
     A_data = [1 2 3; 4 5 6; 7 8 9]
     println("A = ")
     display(A)
@@ -34,7 +34,7 @@ function test_basic_operations()
     
     # Test arithmetic operations
     B_data = [9 8 7; 6 5 4; 3 2 1]
-    B = GpuMatrixModN(B_data, modulus)
+    B = CuModMatrix(B_data, modulus)
     
     println("B = ")
     display(B)
@@ -119,10 +119,10 @@ function test_basic_operations()
 end
 
 """
-Test utility functions of the GpuMatrixModN type.
+Test utility functions of the CuModMatrix type.
 """
 function test_utility_functions()
-    println("Testing utility functions of GpuMatrixModN...")
+    println("Testing utility functions of CuModMatrix...")
     modulus = 11
     
     # Test identity
@@ -150,15 +150,15 @@ function test_utility_functions()
 end
 
 """
-Test matrix operations of the GpuMatrixModN type.
+Test matrix operations of the CuModMatrix type.
 """
 function test_matrix_operations()
-    println("Testing matrix operations of GpuMatrixModN...")
+    println("Testing matrix operations of CuModMatrix...")
     modulus = 11
     
     # Create an invertible matrix mod 11
     G_data = [1 2 3; 0 1 4; 5 6 0]
-    G = GpuMatrixModN(G_data, modulus)
+    G = CuModMatrix(G_data, modulus)
     
     println("G = ")
     display(G)
@@ -201,7 +201,7 @@ function test_matrix_operations()
     # TODO: fix
     # Test non-invertible matrix
     #N_data = [1 2 3; 2 4 6; 3 6 9]  # Linearly dependent rows
-    #N = GpuMatrixModN(N_data, modulus)
+    #N = CuModMatrix(N_data, modulus)
     #
     #println("N = ")
     #display(N)
@@ -213,17 +213,17 @@ function test_matrix_operations()
 end
 
 """
-Test modulus-changing functions of the GpuMatrixModN type.
+Test modulus-changing functions of the CuModMatrix type.
 """
 function test_modulus_functions()
-    println("Testing modulus-changing functions of GpuMatrixModN...")
+    println("Testing modulus-changing functions of CuModMatrix...")
     
     # Test initialization
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus1 = 11  # First modulus
     modulus2 = 7   # Second modulus
     
-    A = GpuMatrixModN(A_data, modulus1)
+    A = CuModMatrix(A_data, modulus1)
     
     println("A (mod $modulus1) = ")
     display(A)
@@ -245,7 +245,7 @@ function test_modulus_functions()
     @test A.N == modulus1
     
     # Test change_modulus! (in-place)
-    C = GpuMatrixModN(A_data, modulus1)
+    C = CuModMatrix(A_data, modulus1)
     Cprime = change_modulus_no_alloc!(C, modulus2)
     
     println("C after change_modulus_no_alloc!(C, $modulus2) = ")
@@ -268,7 +268,7 @@ function test_gpu_mat()
     test_matrix_operations()
     test_modulus_functions()
     
-    println("\nAll GpuMatrixModN tests passed!")
+    println("\nAll CuModMatrix tests passed!")
 end
 
 # Run the tests if this file is run directly

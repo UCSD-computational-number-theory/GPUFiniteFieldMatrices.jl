@@ -26,7 +26,7 @@
     hensel_pseudoinverse(p, precision, A, T)
 
 Hensel lifts mod p solution T to the linear system AX-I=0 to mod p^precision
-Uses the GpuMatrixModN type.
+Uses the CuModMatrix type.
 
 INPUTS:
 * "p" -- integer, a prime number 
@@ -71,7 +71,7 @@ function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
     return nothing
 end
 
-function backsubstitution_shared(U::GpuMatrixModN{T}, b) where T
+function backsubstitution_shared(U::CuModMatrix{T}, b) where T
     n = U.rows
     N = U.N
     x = CUDA.zeros(Int, n)
@@ -108,7 +108,7 @@ function backsubstitution_kernel(U::CuArray{T, 2}, x, b, N) where T
     return nothing
 end
 
-function backsubstitution(U::GpuMatrixModN{T}, b) where T
+function backsubstitution(U::CuModMatrix{T}, b) where T
     n = U.rows
     N = U.N
     x = CUDA.zeros(Int, n)

@@ -4,11 +4,11 @@
 #using LinearAlgebra
 
 """
-Test matrix multiplication operations on GpuMatrixModN.
+Test matrix multiplication operations on CuModMatrix.
 This tests both the standard and direct implementations.
 """
 function test_matmul_operations()
-    println("Testing matrix multiplication operations on GpuMatrixModN...")
+    println("Testing matrix multiplication operations on CuModMatrix...")
     
     # Test matrices
     A_data = [1 2 3; 4 5 6]
@@ -16,8 +16,8 @@ function test_matmul_operations()
     C_data = [58 64; 139 154]  # Expected result A*B mod 11 = [3 9; 7 0]
     modulus = 11  # Prime modulus
     
-    A = GpuMatrixModN(A_data, modulus)
-    B = GpuMatrixModN(B_data, modulus)
+    A = CuModMatrix(A_data, modulus)
+    B = CuModMatrix(B_data, modulus)
     
     println("Matrix A = ")
     display(A)
@@ -37,7 +37,7 @@ function test_matmul_operations()
     
     # Verify the result matches expected calculation (mod 11)
     # TODO: Note we cast just to check the construtor works (though I think this should be removed)
-    expected_C = GpuMatrixModN(C_data .% modulus, modulus)
+    expected_C = CuModMatrix(C_data .% modulus, modulus)
     @test Array(C) ≈ Array(expected_C)
     
     # Test using the direct multiplication implementation
@@ -71,19 +71,19 @@ end
 
 """
      Testing MMPSingularities tests passed
-Test in-place matrix multiplication operations on GpuMatrixModN.
+Test in-place matrix multiplication operations on CuModMatrix.
 """
 function test_inplace_matmul_operations()
-    println("Testing in-place matrix multiplication operations on GpuMatrixModN...")
+    println("Testing in-place matrix multiplication operations on CuModMatrix...")
     
     A_data = [1 2 3; 4 5 6]
     B_data = [7 8; 9 10; 0 1]
     C_data = Base.zeros(Int, 2, 2)  # Destination matrix
     modulus = 11  # Prime modulus
     
-    A = GpuMatrixModN(A_data, modulus)
-    B = GpuMatrixModN(B_data, modulus)
-    C = GpuMatrixModN(C_data, modulus)
+    A = CuModMatrix(A_data, modulus)
+    B = CuModMatrix(B_data, modulus)
+    C = CuModMatrix(C_data, modulus)
     
     println("Matrix A = ")
     display(A)
@@ -112,7 +112,7 @@ function test_inplace_matmul_operations()
     
     # Test in-place multiplication with modulus override
     override_modulus = 7
-    C2 = GpuMatrixModN(Base.zeros(Int, 2, 2), modulus)
+    C2 = CuModMatrix(Base.zeros(Int, 2, 2), modulus)
     
     mat_mul_type_inplace!(C2, A, B, override_modulus)
     
