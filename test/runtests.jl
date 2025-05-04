@@ -15,6 +15,8 @@ include("GpuMatrixModN/pluq_operations_test.jl")
 include("GpuMatrixModN/matmul_operations_test.jl")
 include("GpuMatrixModN/benchmark_test.jl")
 include("GpuMatrixModN/stripe_mul_test.jl")
+include("GpuMatrixModN/allocations_test.jl")
+include("GpuMatrixModN/timing_test.jl")
 
 
 #open("test_results.log", "w") do io
@@ -41,6 +43,15 @@ include("GpuMatrixModN/stripe_mul_test.jl")
                     test_matmul()
                     test_stripe_mul()
                 end
+
+                @testset "Allocations" begin
+                    test_allocations()
+                end
+
+                @testset "Timings" begin
+                    test_timings()
+                end
+
             end 
 #        end
 #    end

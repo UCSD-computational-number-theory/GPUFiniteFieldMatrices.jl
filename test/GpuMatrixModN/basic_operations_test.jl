@@ -18,7 +18,10 @@ function test_basic_operations()
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11  # Use a prime modulus
     A = GpuMatrixModN(A_data, modulus)
-    
+
+    cuA = CuArray(A_data)
+    Aprime = GpuMatrixModN(cuA, modulus)
+    A_data = [1 2 3; 4 5 6; 7 8 9]
     println("A = ")
     display(A)
     println()
@@ -123,8 +126,8 @@ function test_utility_functions()
     modulus = 11
     
     # Test identity
-    I3 = identity(Int, 3, modulus)
-    println("identity(Int, 3, $modulus) = ")
+    I3 = eye(Int, 3, modulus)
+    println("eye(Int, 3, $modulus) = ")
     display(I3)
     println()
     @test Array(I3) == Matrix{Int}(I, 3, 3)

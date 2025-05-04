@@ -19,10 +19,11 @@ include("GpuMatrixModN/kernel_mul/mat_mul_gpu_direct.jl")
 include("GpuMatrixModN/kernel_mul/stripe_mul.jl")
 
 # Export the main type and its operations
-export GpuMatrixModN, is_invertible, inverse, unsafe_GpuMatrixModN
+export GpuArrayModN, GpuMatrixModN, GpuVectorModN
+export is_invertible, inverse, unsafe_GpuMatrixModN
 
 # Export utility functions
-export identity, zeros, rand
+export eye, zeros, rand
 export change_modulus, change_modulus_no_alloc!
 export add!, sub!, elementwise_multiply!, negate!
 export scalar_add!, scalar_subtract!, scalar_multiply!

@@ -98,14 +98,14 @@ function test_inplace_operations()
     @test Array(C) == expected
     
     # Test matrix multiplication
-    E = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
+    E = GPUFiniteFieldMatrices.zeros(Float32, 3, 3, modulus)
     multiply!(E, A, B)
     println("E = A * B (in-place) = ")
     display(E)
     println()
     
     expected = mod.(A_data * B_data, modulus)
-    @test Array(E) == expected
+    @test Array(E) == convert.(Float32,expected)
     
     println("All in-place operations tests passed!")
 end
