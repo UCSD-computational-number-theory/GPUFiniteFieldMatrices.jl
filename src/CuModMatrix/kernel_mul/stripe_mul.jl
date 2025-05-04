@@ -3,6 +3,13 @@
 #
 #end
 
+"""
+    find_max_stripe_ops(type,N)
+
+Given a type `type` that is supported by CUBLAS, 
+find out how many columns we can include in a stripe
+(in the stripe multiplication algorithm)
+"""
 function find_max_stripe_ops(type,N)
     if occursin("Float", string(type))
         bits_dict = Dict("64" => 53, "32" => 24, "16" => 11)
@@ -20,6 +27,8 @@ function find_max_stripe_ops(type,N)
 end
 
 """
+     unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModMatrix,B::CuModMatrix,beta::Integer,C::CuModMatrix)
+
 Light wrapper over the provided interface in CUDA.jl. 
 
 Does not keep track of overflow, so errors could happen if the matrices are too big.
@@ -42,6 +51,8 @@ end
 
 
 """
+    stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
+
 Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
@@ -103,8 +114,9 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
 end
 
 """
-Matrix multiplication mod N based on stripes.
+    stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix)
 
+Matrix multiplication mod N based on stripes.
 """
 function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix)
 

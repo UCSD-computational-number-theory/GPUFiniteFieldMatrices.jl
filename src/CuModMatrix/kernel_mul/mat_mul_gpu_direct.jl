@@ -48,7 +48,7 @@ function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REG
         d_C = CUDA.CuArray{T}(undef, (A_rows, B_cols))
     else
         if rows(C) != A_rows || cols(C) != B_cols
-            throw(MatrixSizeMismatchException(
+            throw(CuModArraySizeMismatchException(
                 "Output matrix C has incorrect dimensions.
                 C has $C_rows rows and $C_cols cols, but needs $A_rows rows and $B_cols cols."
             ))

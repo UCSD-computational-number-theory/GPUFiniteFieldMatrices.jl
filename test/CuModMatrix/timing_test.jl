@@ -19,13 +19,13 @@ function test_timings()
     result = @btimed CUDA.@sync add!($C,$A,$B)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
-    result = @btimed CUDA.@sync scalar_multiply!($C,$A,2)
+    result = @btimed CUDA.@sync mul!($C,$A,2)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
-    result = @btimed CUDA.@sync multiply!($C,$A,$B)
+    result = @btimed CUDA.@sync mul!($C,$A,$B)
     @test result[:time] < 1 # on a 3070, I can get less than 0.2
 
-    result = @btimed CUDA.@sync multiply!($z,$A,$x)
+    result = @btimed CUDA.@sync mul!($z,$A,$x)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
     A = CuModMatrix(A_data,11,elem_type=Float64)
@@ -40,13 +40,13 @@ function test_timings()
     result = @btimed CUDA.@sync add!($C,$A,$B)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.002
 
-    result = @btimed CUDA.@sync scalar_multiply!($C,$A,2)
+    result = @btimed CUDA.@sync mul!($C,$A,2)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.002
 
-    result = @btimed CUDA.@sync multiply!($C,$A,$B)
+    result = @btimed CUDA.@sync mul!($C,$A,$B)
     @test result[:time] < 5 # on a 3070, I can get less than 1
 
-    result = @btimed CUDA.@sync multiply!($z,$A,$x)
+    result = @btimed CUDA.@sync mul!($z,$A,$x)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
 end

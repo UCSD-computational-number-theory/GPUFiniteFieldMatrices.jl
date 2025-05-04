@@ -31,7 +31,7 @@ function test_allocations()
     result = CUDA.@timed scalar_subtract!(C,A,2)
     @test result[:gpu_bytes] == 0
 
-    result = CUDA.@timed scalar_multiply!(C,A,2)
+    result = CUDA.@timed mul!(C,A,2)
     @test result[:gpu_bytes] == 0
 
     result = CUDA.@timed elementwise_multiply!(C,A,B)
@@ -45,10 +45,10 @@ function test_allocations()
 
     # matmul needs to allocate a few views
     
-    result = CUDA.@timed multiply!(C,A,B)
+    result = CUDA.@timed mul!(C,A,B)
     @test result[:gpu_bytes] < 10
 
-    result = CUDA.@timed multiply!(z,A,x)
+    result = CUDA.@timed mul!(z,A,x)
     @test result[:gpu_bytes] < 10
    
 end

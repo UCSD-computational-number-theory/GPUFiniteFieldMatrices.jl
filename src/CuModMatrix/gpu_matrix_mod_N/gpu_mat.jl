@@ -1,42 +1,24 @@
-#using CUDA, LinearAlgebra
-
-#TODO: refactors:
-#      [v]GpuArrayModN --> CuModArray 
-#      [v]GpuMatrixModN --> CuModMatrix
-#      [v]GpuVectorModN --> CuModVector
-#
-#      MatrixSizeMismatchException --> CuModArraySizeMismatchException
-#      MatrixModulusMismatchException --> CuModArrayModulusMismatchException
-#
-#      MatrixTooLargeException --> CuModMatrixTooLargeException
-#      MatrixNotSquareException --> CuModMatrixNotSquareException
-#      MatrixModulusNotPrimeException --> CuModMatrixModulusNotPrimeException
-#
-#      multiply! --> mul!
-#      scalar_multiply! --> mul! rmul! and lmul!
-#
-#      Also: delete a bunch of comments
 
 const TILE_WIDTH = 32
 const DEFAULT_TYPE = Float32
 
-struct MatrixTooLargeException <: Exception
+struct CuModArraySizeMismatchException <: Exception
     message::String
 end
 
-struct MatrixSizeMismatchException <: Exception
+struct CuModArrayModulusMismatchException <: Exception
     message::String
 end
 
-struct MatrixNotSquareException <: Exception
+struct CuModMatrixTooLargeException <: Exception
     message::String
 end
 
-struct MatrixModulusMismatchException <: Exception
+struct CuModMatrixNotSquareException <: Exception
     message::String
 end
 
-struct MatrixModulusNotPrimeException <: Exception
+struct CuModMatrixModulusNotPrimeException <: Exception
     message::String
 end
 
@@ -63,9 +45,9 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
     N::Int               # The modulus N
     
     """
-        CuModArray{T,D}(A::AbstractMatrix{T}, N)
+        CuModArray{T,D}(A::AbstractArray{T}, N)
     
-    General contructor from abstract CPU matrix.
+    General contructor from abstract CPU array.
     Pads data on the GPU to fit a multiple of 32.
     """
     function CuModArray{T,D}(A::AbstractArray{S,D}, N::Int; mod=true, new_size=nothing) where {T,D,S}
@@ -73,21 +55,16 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         pad(d) = ceil(Int, d / TILE_WIDTH) * TILE_WIDTH
 
         padded_size = pad.(size(A))
-        #padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
-        #padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
         
         # Initialize the padded areas to zero
         data = CUDA.fill(zero(T),padded_size...) 
-        # CUDA.CuArray{elem_type}(undef, (padded_rows, padded_cols))
         
         A_inds = CartesianIndices(A)
-        #data_inds = CartesianIndices((1:rows, 1:cols))
         rangesize = map(x -> 1:x,size(A))
         data_inds = CartesianIndices(rangesize)
 
         # The desired behavior is for this to error if the conversion is
         # impossible
-        #converted = convert.(elem_type,A)
         converted = convert.(T,A)
 
         #TODO: We would like to use an in-place version:
@@ -114,11 +91,16 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         CuModArray{T,D}(data::CuArray, N)
 
     Wrapper constructor for results already on the GPU.
-    Does not pad. 
+    Does not pad.
+
+    Thus, for some functionality to work properly, you must manage
+    the padding yourself.
+
+    This constructor is useful for creating a new CuModArray while 
+    keeping the same data as a previous CuModarray.
     """
     function CuModArray{T,D}(A::CuArray{T, D}, N::Int; mod=false, new_size=nothing) where {T,D}
         data = A
-        #rows, cols = size(data)
 
         if new_size != nothing
             new{T,D}(data, new_size, N)
@@ -128,25 +110,61 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
     end
 end
 
-function CuModArray(A::AbstractArray{T,D}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where {T,D}
+"""
+    CuModArray(A::AbstractArray{T}, N)
+
+General contructor from abstract CPU array.
+Pads data on the GPU to fit a multiple of 32.
+"""
+function CuModArray(A::AbstractArray{T,D}, N::Int; mod=true, new_size=nothing, elem_type=DEFAULT_TYPE) where {T,D}
     CuModArray{elem_type,D}(A,N; mod=mod,new_size=new_size)
 end
 
 const CuModMatrix{T} = CuModArray{T,2}
 const CuModVector{T} = CuModArray{T,1}
 
-function CuModMatrix(A::AbstractMatrix{T}, N::Int; mod=false, new_size=nothing, elem_type=DEFAULT_TYPE) where T
+"""
+    CuModMatrix(A::AbstractMatrix{T}, N)
+
+General contructor from abstract CPU matrix.
+Pads data on the GPU to fit a multiple of 32.
+"""
+function CuModMatrix(A::AbstractMatrix{T}, N::Int; mod=true, new_size=nothing, elem_type=DEFAULT_TYPE) where T
     CuModArray{elem_type,2}(A,N; mod=mod,new_size=new_size)
 end
 
+"""
+    CuModMatrix(data::CuArray, N)
+
+Wrapper constructor for results already on the GPU.
+Does not pad.
+
+Thus, for some functionality to work properly, you must manage
+the padding yourself.
+
+This constructor is useful for creating a new CuModMatrix while 
+keeping the same data as a previous CuModMatrix.
+"""
 function CuModMatrix(A::CuArray{T, 2}, N::Int; mod=false, new_size=nothing) where {T}
     CuModArray{T,2}(A,N,mod=mod,new_size=new_size)
 end
 
-function CuModVector(A::AbstractVector{T}, N::Int; mod=false, new_size=nothing,elem_type=DEFAULT_TYPE) where T
+"""
+    CuModVector(A::AbstractMatrix{T}, N)
+
+General contructor from abstract CPU matrix.
+Pads data on the GPU to fit a multiple of 32.
+"""
+function CuModVector(A::AbstractVector{T}, N::Int; mod=true, new_size=nothing,elem_type=DEFAULT_TYPE) where T
     CuModArray{elem_type,1}(A,N; mod=mod,new_size=new_size)
 end
 
+"""
+    CuModVector(data::CuArray, N)
+
+Wrapper constructor for results already on the GPU.
+Does not pad.
+"""
 function CuModVector(A::CuArray{T, 1}, N::Int; mod=false, new_size=nothing) where {T}
     CuModArray{T,1}(A,N,mod=mod,new_size=new_size)
 end
@@ -318,7 +336,7 @@ end
 
 function *(A::CuModMatrix, B::CuModMatrix)
     if A.N != B.N
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrices must have the same modulus N"
         ))
     end
@@ -329,14 +347,14 @@ end
 
 function Base.broadcasted(::typeof(*), A::CuModArray, B::CuModArray)
     if A.N != B.N
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "Matrices must have the same modulus N."
         ))
     end
 
     # Note that this size check is done with the unpadded sizes
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match for .*."
         ))
     end
@@ -354,7 +372,7 @@ end
 # Recursive binary exponentiation algorithm
 function Base.:^(A::CuModMatrix, n::Integer)
     if rows(A) != cols(A) 
-        throw(MatrixNotSquareException(
+        throw(CuModMatrixNotSquareException(
             "Matrix must be square for power operation"
         ))
     end
@@ -474,12 +492,6 @@ function eye(::Type{T}, n::Integer, N::Integer) where T
     CuModMatrix(Matrix{T}(I, n, n), N, new_size=(n, n))
 end
 
-# function Base.identity(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
-#     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
-#     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-#     unsafe_CuModMatrix(CUDA.identity(T, padded_rows, padded_cols), N, new_rows=rows, new_cols=cols)
-# end
-
 """
     zeros(T, length, N)
 
@@ -534,12 +546,12 @@ function add!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "All matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B) || size(A) != size(C)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "All matrix dimensions must match"
         ))
     end
@@ -562,12 +574,12 @@ function sub!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "All matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B) || size(A) != size(C)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "All matrix dimensions must match"
         ))
     end
@@ -589,12 +601,12 @@ function elementwise_multiply!(C::CuModArray, A::CuModArray, B::CuModArray, mod_
     N = mod_N > 0 ? mod_N : C.N
     
     if mod_N <= 0 && (A.N != B.N || A.N != C.N)
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "All matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B) || size(A) != size(C)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "All matrix dimensions must match"
         ))
     end
@@ -613,13 +625,13 @@ function negate!(B::CuModArray, A::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "Both matrices must have the same modulus N or provide an override mod_N"
         ))
     end
 
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
         ))
     end
@@ -638,12 +650,12 @@ function scalar_add!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "Both matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
         ))
     end
@@ -662,12 +674,12 @@ function scalar_subtract!(B::CuModArray, A::CuModArray, s::Number, mod_N::Intege
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "Both matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
         ))
     end
@@ -677,22 +689,21 @@ function scalar_subtract!(B::CuModArray, A::CuModArray, s::Number, mod_N::Intege
 end
 
 """
-    scalar_multiply!(B, A, s, [mod_N])
+    mul!(B, A, s, [mod_N])
 
 In-place scalar multiplication: B = A * s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-#TODO: change to lmul! / rmul!
-function scalar_multiply!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
+function LinearAlgebra.mul!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "Both matrices must have the same modulus N or provide an override mod_N"
         ))
     end
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
         ))
     end
@@ -701,6 +712,21 @@ function scalar_multiply!(B::CuModArray, A::CuModArray, s::Number, mod_N::Intege
     return B
 end
 
+"""
+    rmul!(A,s)
+
+Scales the array A by s, overwriting A.
+As ZZ/n is commutative, this has the same behavior as lmul!
+"""
+rmul!(A::CuModArray, s::Number) = mul!(A,A,s)
+
+"""
+    lmul!(s,A)
+
+Scales the array A by s, overwriting A.
+As ZZ/n is commutative, this has the same behavior as lmul!
+"""
+lmul!(s::Number,A::CuModArray) = mul!(A,A,s)
 
 """
     copy!(B, A)
@@ -710,7 +736,7 @@ B is updated with the contents of A.
 """
 function copy!(B::CuModArray, A::CuModArray)
     if size(A) != size(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
         ))
     end
@@ -771,24 +797,24 @@ function change_modulus_no_alloc!(A::CuModArray, new_N::Integer)
 end
 
 """
-    multiply!(C, A, B)
+    mul!(C, A, B)
 
 In-place matrix multiplication: C = A * B mod N.
 """
-function multiply!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
+function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
     
     if (A.N != B.N || A.N != C.N)
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "All matrices must have the same modulus N"
         ))
     end
     if cols(A) != rows(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions do not match for multiplication"
         ))
     end
     if rows(C) != rows(A) || cols(C) != cols(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Output matrix C has incorrect dimensions"
         ))
     end
@@ -798,24 +824,24 @@ function multiply!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
 end
 
 """
-    multiply!(z, A, x)
+    mul!(z, A, x)
 
 In-place matrix-vector multiplication: z = A * x mod N.
 """
-function multiply!(z::CuModVector, A::CuModMatrix, x::CuModVector)
+function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
     
     if (A.N != z.N || A.N != x.N)
-        throw(MatrixModulusMismatchException(
+        throw(CuModArrayModulusMismatchException(
             "All matrices must have the same modulus N"
         ))
     end
     if cols(A) != length(x)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions do not match for multiplication"
         ))
     end
     if length(z) != rows(A) 
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Output matrix C has incorrect dimensions"
         ))
     end
