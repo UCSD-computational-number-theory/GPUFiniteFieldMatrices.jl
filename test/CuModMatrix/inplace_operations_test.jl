@@ -4,21 +4,21 @@
 #using LinearAlgebra
 
 """
-Test in-place operations of the GpuMatrixModN type.
+Test in-place operations of the CuModMatrix type.
 This includes:
 - Basic in-place arithmetic operations
 - In-place scalar operations
 - In-place operations with modulus override
 """
 function test_inplace_operations()
-    println("Testing in-place operations of GpuMatrixModN...")
+    println("Testing in-place operations of CuModMatrix...")
     
     A_data = [1 2 3; 4 5 6; 7 8 9]
     B_data = [9 8 7; 6 5 4; 3 2 1]
     modulus = 11  # Use a prime modulus
     
-    A = GpuMatrixModN(A_data, modulus)
-    B = GpuMatrixModN(B_data, modulus)
+    A = CuModMatrix(A_data, modulus)
+    B = CuModMatrix(B_data, modulus)
     
     C = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
     D = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
@@ -89,7 +89,7 @@ function test_inplace_operations()
     @test Array(D) == expected
     
     # Test scalar_multiply!
-    scalar_multiply!(C, A, scalar)
+    mul!(C, A, scalar)
     println("C = A * $scalar (in-place) = ")
     display(C)
     println()
@@ -98,14 +98,14 @@ function test_inplace_operations()
     @test Array(C) == expected
     
     # Test matrix multiplication
-    E = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
-    multiply!(E, A, B)
+    E = GPUFiniteFieldMatrices.zeros(Float32, 3, 3, modulus)
+    mul!(E, A, B)
     println("E = A * B (in-place) = ")
     display(E)
     println()
     
     expected = mod.(A_data * B_data, modulus)
-    @test Array(E) == expected
+    @test Array(E) == convert.(Float32,expected)
     
     println("All in-place operations tests passed!")
 end
@@ -120,8 +120,8 @@ function test_inplace_modulus_override()
     modulus1 = 11
     modulus2 = 7
     
-    A = GpuMatrixModN(A_data, modulus1)
-    B = GpuMatrixModN(A_data, modulus2)
+    A = CuModMatrix(A_data, modulus1)
+    B = CuModMatrix(A_data, modulus2)
     C = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus1) 
     
     # Test add! with modulus override
@@ -176,7 +176,7 @@ function test_inplace_modulus_override()
     @test Array(C) == expected
     
     # Test scalar_multiply! with modulus override
-    scalar_multiply!(C, A, scalar, override_modulus)
+    mul!(C, A, scalar, override_modulus)
     println("C = A * $scalar (in-place with modulus override $override_modulus) = ")
     display(C)
     println()
@@ -186,7 +186,7 @@ function test_inplace_modulus_override()
     
     # Test matrix multiplication with modulus override
     D = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus1)
-    multiply!(D, A, B, override_modulus)
+    mul!(D, A, B, override_modulus)
     println("D = A * B (in-place with modulus override $override_modulus) = ")
     display(D)
     println()
@@ -203,7 +203,7 @@ function test_inplace_copy_and_mod()
     A_data = [1 2 3; 4 5 6; 7 8 9]
     modulus = 11
     
-    A = GpuMatrixModN(A_data, modulus)
+    A = CuModMatrix(A_data, modulus)
     B = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
     
     # Test copy!
@@ -215,7 +215,7 @@ function test_inplace_copy_and_mod()
     @test Array(B) == A_data
     
     # Test mod_elements!
-    F = GpuMatrixModN(A_data * 2, modulus)
+    F = CuModMatrix(A_data * 2, modulus)
     mod_elements!(F)
     println("F with modulus applied in-place = ")
     display(F)

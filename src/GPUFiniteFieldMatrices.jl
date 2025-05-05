@@ -9,23 +9,25 @@ using DelimitedFiles
 
 const DEBUG = false
 
-include("GpuMatrixModN/gpu_matrix_mod_N/gpu_mat.jl")
-include("GpuMatrixModN/rref_lu_pluq/rref_new_kernels.jl")
-#include("GpuMatrixModN/kernel_mul/mat_mul_hybrid.jl")
-include("GpuMatrixModN/rref_lu_pluq/rref_gpu_direct.jl")
-include("GpuMatrixModN/kernel_mul/mat_mul_gpu_direct.jl")
-#include("GpuMatrixModN/kernel_mul/mat_mul_ops.jl")
-#include("GpuMatrixModN/hensel_lifting/hensel.jl")
+include("CuModMatrix/gpu_matrix_mod_N/gpu_mat.jl")
+include("CuModMatrix/rref_lu_pluq/rref_new_kernels.jl")
+#include("CuModMatrix/kernel_mul/mat_mul_hybrid.jl")
+include("CuModMatrix/rref_lu_pluq/rref_gpu_direct.jl")
+include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
+#include("CuModMatrix/kernel_mul/mat_mul_ops.jl")
+#include("CuModMatrix/hensel_lifting/hensel.jl")
+include("CuModMatrix/kernel_mul/stripe_mul.jl")
 
 # Export the main type and its operations
-export GpuMatrixModN, is_invertible, inverse, unsafe_GpuMatrixModN
+export CuModArray, CuModMatrix, CuModVector
+export is_invertible, inverse, unsafe_CuModMatrix
 
 # Export utility functions
-export identity, zeros, rand
+export eye, zeros, rand
 export change_modulus, change_modulus_no_alloc!
 export add!, sub!, elementwise_multiply!, negate!
-export scalar_add!, scalar_subtract!, scalar_multiply!
-export multiply!, copy!, mod_elements!
+export scalar_add!, scalar_subtract!, rmul!, lmul!
+export copy!, mod_elements!
 
 # Export GPU operations
 export rref_gpu_type, lu_gpu_type, plup_gpu_type

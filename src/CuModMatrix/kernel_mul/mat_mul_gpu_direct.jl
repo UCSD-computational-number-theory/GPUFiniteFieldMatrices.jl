@@ -2,11 +2,11 @@
 #include("../gpu_mat_type/gpu_mat.jl")
 
 """
-    mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, [mod_N])
+    mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, [mod_N])
 
-Matrix multiplication that works directly with GpuMatrixModN objects.
+Matrix multiplication that works directly with CuModMatrix objects.
 """
-function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1; REGIME="⊠", type=nothing, C=nothing)
+function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REGIME="⊠", type=nothing, C=nothing)
     # TODO: Put if statement to check size of C matches size of A x B.
     # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
     # Use the provided modulus if available, otherwise use A's modulus
@@ -47,8 +47,8 @@ function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1;
         T = eltype(A.data)
         d_C = CUDA.CuArray{T}(undef, (A_rows, B_cols))
     else
-        if C.rows != A_rows || C.cols != B_cols
-            throw(MatrixSizeMismatchException(
+        if rows(C) != A_rows || cols(C) != B_cols
+            throw(CuModArraySizeMismatchException(
                 "Output matrix C has incorrect dimensions.
                 C has $C_rows rows and $C_cols cols, but needs $A_rows rows and $B_cols cols."
             ))
@@ -78,18 +78,18 @@ function mat_mul_gpu_type(A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1;
     end
     
     if C === nothing
-        return GpuMatrixModN(d_C, N, new_rows = A_rows, new_cols = B_cols)
+        return CuModMatrix(d_C, N, new_size=(A_rows, B_cols))
     else
         return C
     end
 end
 
 """
-    mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, [mod_N])
+    mat_mul_type_inplace!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix, [mod_N])
 
-In-place matrix multiplication that works directly with GpuMatrixModN objects.
+In-place matrix multiplication that works directly with CuModMatrix objects.
 """
-function mat_mul_type_inplace!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integer=-1, REGIME="⊠", type=nothing)
+function mat_mul_type_inplace!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing)
     # Use the provided modulus if available, otherwise use A's modulus
     N = mod_N > 0 ? mod_N : A.N
     

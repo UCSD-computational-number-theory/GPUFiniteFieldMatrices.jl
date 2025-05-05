@@ -29,7 +29,7 @@ function mat_mul_gpu(A, B, N, REGIME="⊡", type=Float64, tile_width=25)
     B_rows,B_cols = size(B)
 
     if A_cols != B_rows
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions do not match.
             A has $A_rows rows and $A_cols cols, 
             B has $B_rows rows and $B_cols cols."

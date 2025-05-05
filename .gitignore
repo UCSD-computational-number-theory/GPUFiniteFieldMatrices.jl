@@ -27,3 +27,7 @@ Manifest.toml
 
 *.swp
 test/test_results.log
+*.log
+*.dat
+*.pb.gz
+*.dat"
