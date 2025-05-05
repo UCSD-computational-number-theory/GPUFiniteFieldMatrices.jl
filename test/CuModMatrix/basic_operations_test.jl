@@ -114,7 +114,7 @@ function test_basic_operations()
     println()
     expected = mod.(-A_data, modulus)
     @test Array(S4) == expected
-    
+
     println("All basic operations tests passed!")
 end
 

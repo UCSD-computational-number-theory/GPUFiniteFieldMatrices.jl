@@ -733,8 +733,10 @@ lmul!(s::Number,A::CuModArray) = mul!(A,A,s)
 
 In-place copy: B = A. No allocation is performed.
 B is updated with the contents of A.
+
+This does not test the modulus or normalize the entries.
 """
-function copy!(B::CuModArray, A::CuModArray)
+function Base.copy!(B::CuModArray, A::CuModArray)
     if size(A) != size(B)
         throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
@@ -744,6 +746,24 @@ function copy!(B::CuModArray, A::CuModArray)
     CUDA.copy!(B.data, A.data)
     return B
 end
+
+"""
+    fill!(A::CuModArray{T,D}, s::T) where {T,D}
+
+fills (in place) A with the value s (mod N)
+"""
+function Base.fill!(A::CuModArray, s::Number)
+    smod = mod(s, A.N)
+
+    @. A.data = smod
+end
+
+"""
+    zero!(A::CuModArray)
+
+Sets all of the entries of A to zero, in place.
+"""
+zero!(A::CuModArray) = CUDA.fill!(A.data, zero(eltype(A.data)))
 
 """
     mod_elements!(A, [mod_N])
@@ -849,6 +869,11 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
     stripe_mul!(z, A, x)
     return z
 end
+
+#TODO: addmul! (add and scalar multiply), gemv!, gemm!
+#
+#Note: gemv! and gemm! could be more efficient by incorporating the add into the 
+#CUBLAS gemm/gemv that happens in stripe_mul!
 
 function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
     tid = threadIdx().x

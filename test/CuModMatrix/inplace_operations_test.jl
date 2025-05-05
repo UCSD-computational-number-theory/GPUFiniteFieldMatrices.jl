@@ -10,7 +10,7 @@ This includes:
 - In-place scalar operations
 - In-place operations with modulus override
 """
-function test_inplace_operations()
+function test_inplace_basic_operations()
     println("Testing in-place operations of CuModMatrix...")
     
     A_data = [1 2 3; 4 5 6; 7 8 9]
@@ -116,16 +116,16 @@ Test in-place operations with modulus override.
 function test_inplace_modulus_override()
     println("Testing in-place operations with modulus override...")
     
-    A_data = [1 2 3; 4 5 6; 7 8 9]
-    modulus1 = 11
-    modulus2 = 7
+    A_data = [1 5 10;15 20 25; 30 35 40]
+    modulus1 = 27 
+    modulus2 = 9 
     
     A = CuModMatrix(A_data, modulus1)
     B = CuModMatrix(A_data, modulus2)
     C = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus1) 
     
     # Test add! with modulus override
-    override_modulus = 5
+    override_modulus = 3 
     add!(C, A, B, override_modulus)
     
     println("C = A + B (in-place with modulus override $override_modulus) = ")
@@ -185,14 +185,18 @@ function test_inplace_modulus_override()
     @test Array(C) == expected
     
     # Test matrix multiplication with modulus override
-    D = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus1)
-    mul!(D, A, B, override_modulus)
-    println("D = A * B (in-place with modulus override $override_modulus) = ")
-    display(D)
-    println()
-    
-    expected = mod.(A_data * A_data, override_modulus)
-    @test Array(D) == expected
+    # 
+    #NOTE: this feature was removed, but here's the test preserved in this comment
+    #if want to put it back.
+    #
+    #D = GPUFiniteFieldMatrices.zeros(Float32, 3, 3, modulus1)
+    #mul!(D, A, B, override_modulus)
+    #println("D = A * B (in-place with modulus override $override_modulus) = ")
+    #display(D)
+    #println()
+    #
+    #expected = mod.(A_data * A_data, override_modulus)
+    #@test Array(D) == expected
     
     println("All in-place operations with modulus override tests passed!")
 end
@@ -204,7 +208,7 @@ function test_inplace_copy_and_mod()
     modulus = 11
     
     A = CuModMatrix(A_data, modulus)
-    B = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
+    B = GPUFiniteFieldMatrices.zeros(Float32, 3, 3, modulus)
     
     # Test copy!
     copy!(B, A)
@@ -234,11 +238,21 @@ function test_inplace_copy_and_mod()
     expected = mod.(expected, override_modulus)
     @test Array(F) == expected
     
+    # Test filling (and modding)
+    fill!(F,122.0)
+    expected = ones(Float32,3,3)
+    @test Array(F) == expected
+    
+    # Test zeroing
+    zero!(A)
+    expected = zeros(Float32,3,3)
+    @test Array(A) == expected
+
     println("All in-place copy and modulus operations tests passed!")
 end
 
 function test_inplace()
-    test_inplace_operations()
+    test_inplace_basic_operations()
     test_inplace_modulus_override()
     test_inplace_copy_and_mod()
     

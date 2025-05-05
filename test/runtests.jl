@@ -30,7 +30,7 @@ include("CuModMatrix/timing_test.jl")
                 
                 # In-place Operations Tests
                 @testset "In-place Operations" begin
-                    test_inplace_operations()
+                    test_inplace()
                 end
                 
                 # PLUQ Tests
