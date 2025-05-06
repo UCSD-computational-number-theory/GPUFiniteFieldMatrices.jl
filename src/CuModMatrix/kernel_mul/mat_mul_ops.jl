@@ -1,7 +1,3 @@
-#using CUDA, LinearAlgebra
-
-#const global TILE_WIDTH = 25
-
 """
     GPU MatMul with counting number of operations,
     so MAX_OPS <= TILE_WIDTH.

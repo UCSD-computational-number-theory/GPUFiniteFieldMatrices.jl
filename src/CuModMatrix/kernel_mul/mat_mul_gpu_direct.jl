@@ -1,38 +1,26 @@
-#using CUDA, LinearAlgebra, IterTools
-#include("../gpu_mat_type/gpu_mat.jl")
+
 
 """
     mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, [mod_N])
 
 Matrix multiplication that works directly with CuModMatrix objects.
 """
-function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REGIME="⊠", type=nothing, C=nothing)
-    # TODO: Put if statement to check size of C matches size of A x B.
-    # TODO: Change error --> throw, error alwast stops but throw can be try-except-handled
-    # Use the provided modulus if available, otherwise use A's modulus
+function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REGIME="⊠", type=nothing)
     N = mod_N > 0 ? mod_N : A.N
     
-    # Check if matrices have compatible dimensions
-    A_rows, A_cols = size(A)
-    B_rows, B_cols = size(B)
-    
-    if A_cols != B_rows
-        error(
+    if cols(A) != rows(B)
+        throw(MatrixSizeMismatchException(
             "Matrix dimensions do not match.
-            A has $A_rows rows and $A_cols cols, 
-            B has $B_rows rows and $B_cols cols."
-        ) 
+            A has $rows(A) rows and $cols(A) cols, 
+            B has $rows(B) rows and $cols(B) cols."
+        ))
     end
     
-    # Use the element type from the input if not specified
-    if type === nothing
-        type = eltype(A.data)
-    end
-    
+    type = eltype(A.data)
     MAX_OPS = find_max_ops(type, N)
     
     if REGIME == "⊠"
-        if MAX_OPS >= A_cols # equal to B_rows
+        if MAX_OPS >= cols(A) # equal to B_rows
             REGIME = "⊡"
         elseif MAX_OPS > TILE_WIDTH
             REGIME = "⊟"
@@ -41,47 +29,16 @@ function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REG
         end
     end
     
-    d_A = A.data
-    d_B = B.data
-    if C === nothing
-        T = eltype(A.data)
-        d_C = CUDA.CuArray{T}(undef, (A_rows, B_cols))
-    else
-        if rows(C) != A_rows || cols(C) != B_cols
-            throw(CuModArraySizeMismatchException(
-                "Output matrix C has incorrect dimensions.
-                C has $C_rows rows and $C_cols cols, but needs $A_rows rows and $B_cols cols."
-            ))
-        end
-        d_C = C.data
-    end
+    d_C = CUDA.CuArray{type}(undef, (size(A.data, 1), size(B.data, 2)))
     
     REGIME = "⊡"
     if REGIME == "⊡"
-        # Simple matrix multiplication
-        if C === nothing
-            d_C = d_A * d_B
-            d_C = mod.(d_C, N)
-        else
-            C.data .= mod.(d_A * d_B, N)
-        end
+        mul!(d_C, A.data, B.data)
+        d_C .%= N
     else
-        error("Matrix multiplication of ($A_rows,$A_cols) x ($B_rows,$B_cols) not justified modulo $N for data type $type")
-    #=elseif REGIME == "⊟"
-        # Use the no_ops kernel
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
-    elseif REGIME == "⊞"
-        # Use the ops kernel that handles overflow
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)
-    else
-        error("Invalid regime: $REGIME")=#
+        error("Invalid regime: $REGIME")
     end
-    
-    if C === nothing
-        return CuModMatrix(d_C, N, new_size=(A_rows, B_cols))
-    else
-        return C
-    end
+    return CuModMatrix(d_C, N, new_size=(rows(A), cols(B)))
 end
 
 """
@@ -92,68 +49,37 @@ In-place matrix multiplication that works directly with CuModMatrix objects.
 function mat_mul_type_inplace!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1, REGIME="⊠", type=nothing)
     # Use the provided modulus if available, otherwise use A's modulus
     N = mod_N > 0 ? mod_N : A.N
+
+    if rows(C) != rows(A) || cols(C) != cols(B)
+        throw(MatrixSizeMismatchException(
+            "Output matrix C has incorrect dimensions"
+        ))
+    end
     
-    # Check if matrices have compatible dimensions
-    A_rows, A_cols = size(A)
-    B_rows, B_cols = size(B)
-    C_rows, C_cols = size(C)
-    
-    if A_cols != B_rows
-        error(
+    if cols(A) != rows(B)
+        throw(MatrixSizeMismatchException(
             "Matrix dimensions do not match.
-            A has $A_rows rows and $A_cols cols, 
-            B has $B_rows rows and $B_cols cols."
-        ) 
+            A has $rows(A) rows and $cols(A) cols, 
+            B has $rows(B) rows and $cols(B) cols."
+        ))
     end
     
-    if C_rows != A_rows || C_cols != B_cols
-        error(
-            "Output matrix C has incorrect dimensions.
-            C has $C_rows rows and $C_cols cols, but needs $A_rows rows and $B_cols cols."
-        )
-    end
-    
-    # Use the element type from the inputs if not specified
-    if type === nothing
-        type = eltype(A.data)
-    end
-    
+    type = eltype(A.data)
     MAX_OPS = find_max_ops(type, N)
     println("MAX_OPS: $MAX_OPS")
     
-    if REGIME == "⊠"
-        if MAX_OPS >= A_cols # equal to B_rows
-            REGIME = "⊡"
-        elseif MAX_OPS > TILE_WIDTH
-            REGIME = "⊟"
-        else
-            REGIME = "⊞"
-        end
-    end
-    
-    d_A = A.data
-    d_B = B.data
-    d_C = C.data
-    
-    if REGIME == "⊡"
-        # Simple matrix multiplication
-        #d_C = d_A * d_B
-        LinearAlgebra.mul!(d_C,d_A,d_B)
-        d_C .= mod.(d_C, N)
-        #=elseif REGIME == "⊟"
-        # Use the no_ops kernel
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_no_ops(d_A, d_B, d_C, N, A_rows, type)
-    elseif REGIME == "⊞"
-        # Use the ops kernel that handles overflow
-        @cuda threads=(TILE_WIDTH, TILE_WIDTH) blocks=(div(B_cols, TILE_WIDTH), div(A_rows, TILE_WIDTH)) mat_mul_ops(d_A, d_B, d_C, N, A_rows, type, MAX_OPS)=#
+    if MAX_OPS >= cols(A) # equal to rows(B)
+        REGIME = "⊡"
     else
-        error("Matrix multiplication of ($A_rows,$A_cols) x ($B_rows,$B_cols) not justified modulo $N for data type $type")
+        REGIME = "⊞"
     end
     
-    # Copy result directly to C's GPU memory
-    C_inds = CartesianIndices((1:A_rows, 1:B_cols))
-    d_C_inds = CartesianIndices((1:A_rows, 1:B_cols))
-    copyto!(C.data, C_inds, d_C, d_C_inds)
-    
+    REGIME = "⊡"
+    if REGIME == "⊡"
+        LinearAlgebra.mul!(C.data,A.data,B.data)
+        C.data .%= N
+    else
+        error("Matrix multiplication of ($(rows(A)),$(cols(A))) x ($(rows(B)),$(cols(B))) not justified modulo $N for data type $type")
+    end
     return C
 end 

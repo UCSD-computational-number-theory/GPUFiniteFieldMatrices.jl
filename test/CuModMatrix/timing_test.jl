@@ -1,6 +1,8 @@
 
 function test_timings()
 
+    println("Begin testing timing.")
+
     n = 5000 
     A_data = Base.rand(0:10,n,n)
     B_data = Base.rand(0:10,n,n)
@@ -49,4 +51,5 @@ function test_timings()
     result = @btimed CUDA.@sync mul!($z,$A,$x)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
+    CUDA.@sync println("Done testing timing.")
 end

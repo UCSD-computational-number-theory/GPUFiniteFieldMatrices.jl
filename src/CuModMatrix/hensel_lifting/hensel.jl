@@ -72,7 +72,7 @@ function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
 end
 
 function backsubstitution_shared(U::CuModMatrix{T}, b) where T
-    n = U.rows
+    n = rows(U)
     N = U.N
     x = CUDA.zeros(Int, n)
     d_b = CuArray(b)
@@ -109,7 +109,7 @@ function backsubstitution_kernel(U::CuArray{T, 2}, x, b, N) where T
 end
 
 function backsubstitution(U::CuModMatrix{T}, b) where T
-    n = U.rows
+    n = rows(U)
     N = U.N
     x = CUDA.zeros(Int, n)
     d_b = CuArray(b)

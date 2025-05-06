@@ -1,9 +1,3 @@
-#using CUDA, LinearAlgebra, IterTools
-#include("mat_mul_plain.jl")
-#include("mat_mul_no_ops.jl")
-#include("mat_mul_ops.jl")
-#include("../gpu_mat_type/gpu_mat.jl")
-
 const global TILE_WIDTH = 32
 
 function mat_mul_gpu(A, B, N, REGIME="⊡", type=Float64, tile_width=25)
@@ -96,33 +90,33 @@ function mat_mul_gpu(A, B, N, REGIME="⊡", type=Float64, tile_width=25)
     return 
 end
 
-"""
-    find_max_ops(type, N)
+# """
+#     find_max_ops(type, N)
 
-Returns the maximum number of operations before a modulus is necessary given a datatype type and modulus N.
+# Returns the maximum number of operations before a modulus is necessary given a datatype type and modulus N.
 
-Supports all basic Julia Float, Int, and UInt types.
-"""
-function find_max_ops(type, N)
+# Supports all basic Julia Float, Int, and UInt types.
+# """
+# function find_max_ops(type, N)
 
-    if occursin("Float", string(type))
-        bits = match(r"\d+", string(type))
-        d = Dict("64"=>51, "32"=>22, "16"=>9)
-        bits = get(d, bits.match, -1)
+#     if occursin("Float", string(type))
+#         bits = match(r"\d+", string(type))
+#         d = Dict("64"=>51, "32"=>22, "16"=>9)
+#         bits = get(d, bits.match, -1)
 
-    elseif occursin("UInt", string(type))
-        bits = int(match(r"\d+", string(type)).match) - 1
+#     elseif occursin("UInt", string(type))
+#         bits = int(match(r"\d+", string(type)).match) - 1
 
-    elseif occursin("Int", string(type))
-        bits = int(match(r"\d+", string(type)).match)
+#     elseif occursin("Int", string(type))
+#         bits = int(match(r"\d+", string(type)).match)
     
-    else
-        error("The input type is neither Int, UInt, nor Float.")
-    end
+#     else
+#         error("The input type is neither Int, UInt, nor Float.")
+#     end
 
-    if bits == -1
-        error("Input type is not recognized.")
-    end
+#     if bits == -1
+#         error("Input type is not recognized.")
+#     end
 
-    return floor((2^bits-1)/N^2) - 1
-end
+#     return floor((2^bits-1)/N^2) - 1
+# end

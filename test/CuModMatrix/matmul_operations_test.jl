@@ -77,13 +77,13 @@ function test_inplace_matmul_operations()
     println("Testing in-place matrix multiplication operations on CuModMatrix...")
     
     A_data = [1 2 3; 4 5 6]
-    B_data = [7 8; 9 10; 0 1]
-    C_data = Base.zeros(Int, 2, 2)  # Destination matrix
-    modulus = 11  # Prime modulus
+    B_data = [7 8; 9 10; 11 12]
+    C = GPUFiniteFieldMatrices.zeros(Float32, 2, 2, 9) 
+    C_data = C.data
+    modulus = 9  # Prime modulus
     
     A = CuModMatrix(A_data, modulus)
     B = CuModMatrix(B_data, modulus)
-    C = CuModMatrix(C_data, modulus)
     
     println("Matrix A = ")
     display(A)
@@ -98,10 +98,10 @@ function test_inplace_matmul_operations()
     println()
     
     # Test using the in-place multiplication implementation
-    println("Testing mat_mul_type_inplace!...")
+    println("Testing mat_mul_gpu_type...")
     mat_mul_type_inplace!(C, A, B)
     
-    println("After mat_mul_type_inplace!(C, A, B):")
+    println("After mat_mul_gpu_type(A, B, C):")
     display(C)
     println()
     
@@ -111,8 +111,8 @@ function test_inplace_matmul_operations()
     @test Array(C) ≈ expected_C
     
     # Test in-place multiplication with modulus override
-    override_modulus = 7
-    C2 = CuModMatrix(Base.zeros(Int, 2, 2), modulus)
+    override_modulus = 3
+    C2 = GPUFiniteFieldMatrices.zeros(Float32, 2, 2, override_modulus)
     
     mat_mul_type_inplace!(C2, A, B, override_modulus)
     
@@ -122,7 +122,7 @@ function test_inplace_matmul_operations()
     
     # Verify the result matches expected calculation (mod override_modulus)
     # see previous TODO
-    expected_C2 = (A_data * B_data) .% override_modulus
+    expected_C2 = mod.(A_data * B_data, override_modulus)
     @test Array(C2) ≈ expected_C2
     
     println("All in-place matrix multiplication operations tests passed!")
@@ -131,7 +131,6 @@ end
 function test_matmul()
     test_matmul_operations()
     test_inplace_matmul_operations()
-    #test_matmul_regimes()
     
     println("\nAll matrix multiplication tests passed!")
 end

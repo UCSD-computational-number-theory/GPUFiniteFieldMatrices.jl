@@ -58,8 +58,8 @@ function benchmark_inplace_vs_standard()
     println()
     
     # Benchmark in-place matrix multiplication
-    t5 = @benchmark mat_mul_type_inplace!($C, $A, $B)
-    println("In-place multiplication (mat_mul_type_inplace!(C, A, B)):")
+    t5 = @benchmark mat_mul_gpu_type($A, $B, $C)
+    println("In-place multiplication (mat_mul_gpu_type(A, B, C)):")
     display(t5)
     println()
     
@@ -141,8 +141,8 @@ function benchmark_rref_operations()
         A = CuModMatrix(A_data, modulus)
         
         # Benchmark standard RREF
-        t1 = @benchmark rref_gpu_direct($A)
-        println("Standard RREF (rref_gpu_direct):")
+        t1 = @benchmark rref_gpu_type($A)
+        println("Standard RREF (rref_gpu_type):")
         display(t1)
         println()
         

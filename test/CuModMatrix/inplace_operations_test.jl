@@ -79,8 +79,7 @@ function test_inplace_basic_operations()
     expected = mod.(A_data .+ scalar, modulus)
     @test Array(C) == expected
     
-    # Test scalar_sub!
-    scalar_subtract!(D, A, scalar)
+    scalar_sub!(D, A, scalar)
     println("D = A - $scalar (in-place) = ")
     display(D)
     println()
@@ -166,8 +165,8 @@ function test_inplace_modulus_override()
     expected = mod.(A_data .+ scalar, override_modulus)
     @test Array(C) == expected
     
-    # Test scalar_subtract! with modulus override
-    scalar_subtract!(C, A, scalar, override_modulus)
+    # Test scalar_sub! with modulus override
+    scalar_sub!(C, A, scalar, override_modulus)
     println("C = A - $scalar (in-place with modulus override $override_modulus) = ")
     display(C)
     println()

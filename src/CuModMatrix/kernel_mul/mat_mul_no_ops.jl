@@ -1,6 +1,7 @@
 using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 25
+# include("../gpu_matrix_mod_N/gpu_mat.jl")
+# const global TILE_WIDTH = 25
 
 function mat_mul_no_ops(d_A, d_B, d_C, P, width, TYPE)
     """

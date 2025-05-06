@@ -1,6 +1,8 @@
 
 function test_allocations()
 
+    println("Begin testing allocations.")
+
     n = 3003
     A_data = Base.rand(0:10,n,n)
     B_data = Base.rand(0:10,n,n)
@@ -28,7 +30,7 @@ function test_allocations()
     result = CUDA.@timed scalar_add!(C,A,2)
     @test result[:gpu_bytes] == 0
 
-    result = CUDA.@timed scalar_subtract!(C,A,2)
+    result = CUDA.@timed scalar_sub!(C,A,2)
     @test result[:gpu_bytes] == 0
 
     result = CUDA.@timed mul!(C,A,2)
@@ -51,6 +53,7 @@ function test_allocations()
     result = CUDA.@timed mul!(z,A,x)
     @test result[:gpu_bytes] < 10
    
+    CUDA.@sync println("Done testing allocations.")
 end
 
 

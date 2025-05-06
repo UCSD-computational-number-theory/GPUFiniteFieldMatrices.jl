@@ -41,11 +41,12 @@ function test_stripe_mul()
     C = GPUFiniteFieldMatrices.zeros(Float64,s,s,11^7)
     
     println("Multiplying on the GPU...")
-    GPUFiniteFieldMatrices.stripe_mul!(C,A,B)
+    CUDA.@time GPUFiniteFieldMatrices.stripe_mul!(C,A,B)
+    CUDA.@sync println("Done with GPU")
 
     println("Multiplying on the CPU...")
     C_cpu = A_data * B_data .% 11^7
 
-    println("Done computing")
+    println("Done testing stripe mul")
     @test C_cpu == Array(C)
 end

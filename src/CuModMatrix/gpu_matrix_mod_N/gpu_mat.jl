@@ -250,8 +250,10 @@ function Base.show(io::IO, A::CuModArray)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModArray)
-    println("$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
-    Base.print_matrix(io, Array(A))
+    println(io, "$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
+    # Base.print_matrix(io, Array(A))
+    remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
+    println(io, remove_first_line(repr("text/plain", Array(A))))
 end
 
 function Base.show(io::IO, A::CuModVector)
@@ -262,8 +264,10 @@ function Base.show(io::IO, A::CuModVector)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModVector)
-    println("$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
-    Base.print_matrix(io, Array(A))
+    println(io, "$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
+    # Base.print_matrix(io, Array(A))
+    remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
+    println(io, remove_first_line(repr("text/plain", Array(A))))
 end
 
 function Base.show(io::IO, A::CuModMatrix)
@@ -274,8 +278,10 @@ function Base.show(io::IO, A::CuModMatrix)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModMatrix)
-    println("$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
-    Base.print_matrix(io, Array(A))
+    println(io, "$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
+    # Base.print_matrix(io, Array(A))
+    remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
+    println(io, remove_first_line(repr("text/plain", Array(A))))
 end
 
 # Basic arithmetic operations with greedy reduction
@@ -666,12 +672,12 @@ function scalar_add!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
 end
 
 """
-    scalar_subtract!(B, A, s, [mod_N])
+    scalar_sub!(B, A, s, [mod_N])
 
 In-place scalar subtraction: B = A - s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-function scalar_subtract!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
+function scalar_sub!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -878,92 +884,3 @@ end
 #
 #Note: gemv! and gemm! could be more efficient by incorporating the add into the 
 #CUBLAS gemm/gemv that happens in stripe_mul!
-
-function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
-    tid = threadIdx().x
-    bid = blockIdx().x
-    n = size(U, 1)
-    
-    shared_sum = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
-    
-    for i = n:-1:1
-        if tid == 1 && bid == 1
-            sum = b[i]
-            for j = i+1:n
-                sum = (sum - (U[i, j] * x[j]) % N) % N
-                if sum < 0
-                    sum += N
-                end
-            end
-            
-            diag_inv = mod_inv(U[i, i], N)
-            x[i] = (sum * diag_inv) % N
-        end
-        
-        CUDA.sync_threads()
-    end
-    
-    return nothing
-end
-
-function backsubstitution_optimized_gpu(U::CuModMatrix{T}, b) where T
-    n = rows(U)
-    N = U.N
-    x = CUDA.zeros(Int, n)
-    d_b = CuArray(b)
-    
-    @cuda threads=1 blocks=1 backsubstitution_shared_kernel(U.data, x, d_b, N)
-    
-    return Array(x)
-end
-
-function backsubstitution_parallel_kernel(U::CuArray{T, 2}, x, b, N) where T
-    tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
-    n = size(U, 1)
-    
-    if tid <= n
-        for i = n:-1:1
-            CUDA.sync_blocks()
-            
-            if tid == i
-                sum = b[i]
-                for j = i+1:n
-                    sum = (sum - (U[i, j] * x[j]) % N) % N
-                    if sum < 0
-                        sum += N
-                    end
-                end
-                
-                diag_inv = mod_inv(U[i, i], N)
-                x[i] = (sum * diag_inv) % N
-            end
-        end
-    end
-    
-    return nothing
-end
-
-function backsubstitution_fully_parallel_gpu(U::CuModMatrix{T}, b) where T
-    n = rows(U)
-    N = U.N
-    x = CUDA.zeros(Int, n)
-    d_b = CuArray(b)
-    
-    threads_per_block = min(256, n)
-    num_blocks = ceil(Int, n / threads_per_block)
-    
-    @cuda threads=threads_per_block blocks=num_blocks backsubstitution_parallel_kernel(U.data, x, d_b, N)
-    
-    return Array(x)
-end
-
-function hensel_pseudoinverse(p, precision, A, T0)
-    i = 1
-    T = T0
-    while i < precision
-        T = 2*T - T * (A*T)
-        i *= 2
-    end
-    R, pi = residue_ring(ZZ, p^precision)
-    return matrix(R, [R(x) for x in Array(T)])
-end
