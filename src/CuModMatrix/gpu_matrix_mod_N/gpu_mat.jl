@@ -52,6 +52,12 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
     """
     function CuModArray{T,D}(A::AbstractArray{S,D}, N::Int; mod=true, new_size=nothing) where {T,D,S}
 
+        if 2^52 < N
+            throw(CuModArrayModulusMismatchException(
+                 "Modulus $N is bigger than 2^52 = $(2^52), the largest supported modulus"
+                 ))
+        end
+
         pad(d) = ceil(Int, d / TILE_WIDTH) * TILE_WIDTH
 
         padded_size = pad.(size(A))
@@ -219,7 +225,10 @@ Base.length(A::CuModArray) = prod(size(A))
 # use cases.
 Base.getindex(A::CuModArray, i::Int) = A.data[i]
 Base.getindex(A::CuModArray, i::Int, j::Int) = A.data[i, j]
+
 Base.setindex!(A::CuModArray, v, i::Int, j::Int) = A.data[i, j] = mod(v, A.N)
+Base.setindex!(A::CuModArray, v, i::Int) = A.data[i] = mod(v, A.N)
+
 Base.getindex(A::CuModArray, I::AbstractArray{Int}, J::AbstractArray{Int}) = 
     CuModArray(Array(A.data[I, J]), A.N)
 Base.getindex(A::CuModArray, I::AbstractArray{Int}, j::Int) = 

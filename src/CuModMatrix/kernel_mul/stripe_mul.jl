@@ -81,6 +81,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
 
     if num_stripes == 1
         mul!(z.data,A.data,x.data)
+        z.data .%= z.N
         return
     end
 
@@ -98,7 +99,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
         range = M*(i-1)+1:M*i 
         A_temp = @view A.data[:,range]
         x_temp = @view x.data[range]
-        CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,C.data)
+        CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
         z.data .%= z.N
 
         i += 1
