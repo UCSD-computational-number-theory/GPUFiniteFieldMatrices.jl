@@ -20,14 +20,17 @@ include("CuModMatrix/kernel_mul/stripe_mul.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
-export is_invertible, inverse, unsafe_CuModMatrix
+export inverse, unsafe_CuModMatrix
 
 # Export utility functions
 export eye 
 export change_modulus, change_modulus_no_alloc!
-export add!, sub!, elementwise_multiply!, negate!
+export elementwise_multiply!, negate!
 export scalar_add!, scalar_subtract!, rmul!, lmul!
-export mod_elements!, fill!, zero!
+export mod_elements!, fill! 
+
+# do not export: add!, sub!, zero!, is_invertible, is_invertible_with_inverse
+#     (since they conflict with AbstractAlgebra
 
 # Export GPU operations
 export rref_gpu_type, lu_gpu_type, plup_gpu_type

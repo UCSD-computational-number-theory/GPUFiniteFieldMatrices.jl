@@ -16,10 +16,10 @@ function test_allocations()
     #Note: BenchmarkTools doesn't seem to support tracking gpu allocations
     #as of May 2025
 
-    result = CUDA.@timed add!(C,A,B)
+    result = CUDA.@timed GPUFiniteFieldMatrices.add!(C,A,B)
     @test result[:gpu_bytes] == 0
 
-    result = CUDA.@timed sub!(C,A,B)
+    result = CUDA.@timed GPUFiniteFieldMatrices.sub!(C,A,B)
     @test result[:gpu_bytes] == 0
 
     result = CUDA.@timed negate!(C,A)

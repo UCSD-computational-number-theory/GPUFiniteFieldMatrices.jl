@@ -32,7 +32,7 @@ function test_inplace_basic_operations()
     println()
     
     # Test add!
-    add!(C, A, B)
+    GPUFiniteFieldMatrices.add!(C, A, B)
     println("C = A + B (in-place) = ")
     display(C)
     println()
@@ -41,7 +41,7 @@ function test_inplace_basic_operations()
     @test Array(C) == expected
     
     # Test sub!
-    sub!(D, A, B)
+    GPUFiniteFieldMatrices.sub!(D, A, B)
     println("D = A - B (in-place) = ")
     display(D)
     println()
@@ -126,7 +126,7 @@ function test_inplace_modulus_override()
     
     # Test add! with modulus override
     override_modulus = 3 
-    add!(C, A, B, override_modulus)
+    GPUFiniteFieldMatrices.add!(C, A, B, override_modulus)
     
     println("C = A + B (in-place with modulus override $override_modulus) = ")
     display(C)
@@ -136,7 +136,7 @@ function test_inplace_modulus_override()
     @test Array(C) == expected
     
     # Test sub! with modulus override
-    sub!(C, A, B, override_modulus)
+    GPUFiniteFieldMatrices.sub!(C, A, B, override_modulus)
     
     println("C = A - B (in-place with modulus override $override_modulus) = ")
     display(C)
@@ -244,7 +244,7 @@ function test_inplace_copy_and_mod()
     @test Array(F) == expected
     
     # Test zeroing
-    zero!(A)
+    GPUFiniteFieldMatrices.zero!(A)
     expected = zeros(Float32,3,3)
     @test Array(A) == expected
 

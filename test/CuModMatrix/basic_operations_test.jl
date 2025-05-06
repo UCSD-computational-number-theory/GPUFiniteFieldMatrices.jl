@@ -165,7 +165,7 @@ function test_matrix_operations()
     println()
     
     # Test invertibility
-    @test is_invertible(G)
+    @test GPUFiniteFieldMatrices.is_invertible(G)
     
     # TODO: FIX INVERSES!
     # # Test inverse

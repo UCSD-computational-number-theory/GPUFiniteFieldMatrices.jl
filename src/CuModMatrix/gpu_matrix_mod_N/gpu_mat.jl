@@ -569,6 +569,7 @@ end
 
 In-place subtraction: C = A - B mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of C.N for the modulus.
+
 """
 function sub!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : C.N
@@ -717,6 +718,8 @@ end
 
 Scales the array A by s, overwriting A.
 As ZZ/n is commutative, this has the same behavior as lmul!
+
+TODO: make this and lmul! extend base
 """
 rmul!(A::CuModArray, s::Number) = mul!(A,A,s)
 
@@ -762,6 +765,7 @@ end
     zero!(A::CuModArray)
 
 Sets all of the entries of A to zero, in place.
+
 """
 zero!(A::CuModArray) = CUDA.fill!(A.data, zero(eltype(A.data)))
 
