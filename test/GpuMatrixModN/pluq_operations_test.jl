@@ -23,16 +23,16 @@ function test_pluq_operations()
     display(A)
     println()
     
-    # Test using the rref_gpu_direct function (indirect)
-    println("Testing rref_gpu_direct...")
-    A_rref = rref_gpu_direct(A)
+    # Test using the rref_gpu_type function (indirect)
+    println("Testing rref_gpu_type...")
+    A_rref = rref_gpu_type(A)
     
     println("RREF(A) = ")
     display(A_rref)
     println()
     
     # Test identity matrix reduction
-    B_rref = rref_gpu_direct(B)
+    B_rref = rref_gpu_type(B)
     println("RREF(B) (identity) = ")
     display(B_rref)
     println()
@@ -41,7 +41,7 @@ function test_pluq_operations()
     @test Array(B_rref) ≈ B_data
     
     # Test rank 1 matrix reduction
-    C_rref = rref_gpu_direct(C)
+    C_rref = rref_gpu_type(C)
     println("RREF(C) (rank 1) = ")
     display(C_rref)
     println()

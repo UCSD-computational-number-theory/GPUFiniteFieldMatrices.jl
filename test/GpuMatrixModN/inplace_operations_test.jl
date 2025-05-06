@@ -20,8 +20,9 @@ function test_inplace_operations()
     A = GpuMatrixModN(A_data, modulus)
     B = GpuMatrixModN(B_data, modulus)
     
-    C = zeros(Int, 3, 3, modulus)
-    D = zeros(Int, 3, 3, modulus)
+    # fix so that it uses zeros from GpuMatrixModN  
+    C = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
+    D = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
     
     println("A = ")
     display(A)
@@ -40,8 +41,8 @@ function test_inplace_operations()
     expected = mod.(A_data + B_data, modulus)
     @test Array(C) == expected
     
-    # Test subtract!
-    subtract!(D, A, B)
+    # Test sub!
+    sub!(D, A, B)
     println("D = A - B (in-place) = ")
     display(D)
     println()
@@ -79,8 +80,8 @@ function test_inplace_operations()
     expected = mod.(A_data .+ scalar, modulus)
     @test Array(C) == expected
     
-    # Test scalar_subtract!
-    scalar_subtract!(D, A, scalar)
+    # Test scalar_sub!
+    scalar_sub!(D, A, scalar)
     println("D = A - $scalar (in-place) = ")
     display(D)
     println()
@@ -98,8 +99,8 @@ function test_inplace_operations()
     @test Array(C) == expected
     
     # Test matrix multiplication
-    E = zeros(Int, 3, 3, modulus)
-    multiply!(E, A, B)
+    E = GPUFiniteFieldMatrices.zeros(Int, 3, 3, modulus)
+    multiply!(A, B, E)
     println("E = A * B (in-place) = ")
     display(E)
     println()
@@ -135,8 +136,8 @@ function test_inplace_modulus_override()
     expected = mod.(A_data + A_data, override_modulus)
     @test Array(C) == expected
     
-    # Test subtract! with modulus override
-    subtract!(C, A, B, override_modulus)
+    # Test sub! with modulus override
+    sub!(C, A, B, override_modulus)
     
     println("C = A - B (in-place with modulus override $override_modulus) = ")
     display(C)
@@ -166,8 +167,8 @@ function test_inplace_modulus_override()
     expected = mod.(A_data .+ scalar, override_modulus)
     @test Array(C) == expected
     
-    # Test scalar_subtract! with modulus override
-    scalar_subtract!(C, A, scalar, override_modulus)
+    # Test scalar_sub! with modulus override
+    scalar_sub!(C, A, scalar, override_modulus)
     println("C = A - $scalar (in-place with modulus override $override_modulus) = ")
     display(C)
     println()

@@ -1,6 +1,6 @@
 using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 2
+# const global TILE_WIDTH = 2
 const global TYPE = Float32
 const global DEBUG = false
 
@@ -21,10 +21,8 @@ function rref_gpu(A, P)
 
     while row <= A_rows && col <= A_cols
 
-        # println("$row $col")
+        p = find_pivot_val(d_A, A_rows, row, col)
 
-        k = find_pivot(d_A, A_rows, row, col)
-        p = 1
         if p == 0
             col += 1
             continue
@@ -35,19 +33,12 @@ function rref_gpu(A, P)
 
         normalize_broadcast(d_A, col, p_inv, P)
 
-        # println("A: $A")
-        # println("row: $row")
-        # println("col: $col")
-        # println("A_padded_rows: $A_padded_rows")
-
         @cuda threads=(TILE_WIDTH) blocks=(div(A_rows,TILE_WIDTH)) update_sub_matrix_row(d_A, row, col, div(A_cols-col,TILE_WIDTH), P)
 
         row += 1
         col += 1
 
     end
-
-    # A = Array(d_A)
 
     return Array(d_A)
 end
@@ -222,21 +213,18 @@ function find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
 end
 
 function find_pivot(d_A, A_rows, row, col)
-    # return argmax(d_A[row:A_rows,col])
-    #TODO move back to original after testing
-    return row
+    A_temp = @view d_A[row:A_rows,col]
+    return argmax(A_temp)
 end
 
 function find_pivot_idx(d_A::CUDA.CuArray, A_rows::Int, row::Int, col::Int)
-    CUDA.allowscalar() do 
-        return argmax(Array(d_A[row:A_rows,col]))
-    end
+    A_temp = @view d_A[row:A_rows,col]
+    return argmax(A_temp) + row - 1
 end
 
 function find_pivot_val(d_A, A_rows, row, col)
-    CUDA.allowscalar() do 
-        return maximum(Array(d_A[row:A_rows,col]))
-    end
+    A_temp = @view d_A[row:end,col]
+    return maximum(A_temp)
 end
 
 function find_pivot_custom(d_A, A_rows, row, col, res)
@@ -367,34 +355,47 @@ function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p, P)
 end
 
 function update_sub_matrix_row(d_A, p_row, p_col, bound, P)
-
     tid = threadIdx().x
     yid = threadIdx().y
     bid = blockIdx().x
     idx = tid + (bid - 1) * blockDim().x
 
-    row_inv = P - d_A[p_row+idx,p_col]
+    # Skip if we're at the pivot row
+    if idx == 0
+        return
+    end
+
+    # Get the value in the pivot column for this row
+    pivot_col_val = d_A[p_row + idx, p_col]
+    
+    # If the value is already 0, no need to update
+    if pivot_col_val == 0
+        return
+    end
+
+    row_inv = P - pivot_col_val
     shared_row = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
 
     m = 0
     while m <= bound
-        shared_row[yid] = d_A[p_row,p_col + yid + m*TILE_WIDTH]
+        shared_row[yid] = d_A[p_row, p_col + yid + m*TILE_WIDTH]
         CUDA.sync_threads()
 
-        # CUDA.@cuprintln("row ",p_row + idx," row_inv ",row_inv," col ", p_col + yid + m*TILE_WIDTH," shared ",shared_row[yid]," before ",d_A[p_row + idx,p_col + yid + m*TILE_WIDTH])
+        # Only update if the value in the pivot column is non-zero
+        if pivot_col_val != 0
+            temp = shared_row[yid] * row_inv
+            temp = temp + d_A[p_row + idx, p_col + yid + m*TILE_WIDTH]
+            d_A[p_row + idx, p_col + yid + m*TILE_WIDTH] = temp % P
+        end
 
-        temp = shared_row[yid] * row_inv
-        temp = temp + d_A[p_row + idx,p_col + yid + m*TILE_WIDTH]
-        d_A[p_row + idx,p_col + yid + m*TILE_WIDTH] = temp % P
-
-        # CUDA.@cuprintln("row ",p_row + idx," row_inv ",row_inv," col ", p_col + yid + m*TILE_WIDTH," shared ",shared_row[yid]," after ",d_A[p_row + idx,p_col + yid + m*TILE_WIDTH])
         m += 1
-
         CUDA.sync_threads()
     end
-    # CUDA.@cuprintln("row",p_row+idx,"col",p_col)
-    d_A[p_row+idx,p_col] = 0
-    # CUDA.@cuprintln(d_A[1,4],"row",p_row+idx,"col",p_col)
+
+    # Only zero out the pivot column if we actually updated the row
+    if pivot_col_val != 0
+        d_A[p_row + idx, p_col] = 0
+    end
 
     return
 end

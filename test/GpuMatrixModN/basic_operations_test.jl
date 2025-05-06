@@ -193,7 +193,7 @@ function test_matrix_operations()
     println("G^0 = ")
     display(G0)
     println()
-    @test Array(G0) == I_3
+    @test Array(G0) == Matrix{Int}(I, 3, 3)
     
     # Test non-invertible matrix
     N_data = [1 2 3; 2 4 6; 3 6 9]  # Linearly dependent rows
@@ -204,8 +204,6 @@ function test_matrix_operations()
     println()
     
     @test !is_invertible(N)
-    
-    println("All matrix operations tests passed!")
 end
 
 """
@@ -240,17 +238,17 @@ function test_modulus_functions()
     # Test that A is unchanged
     @test A.N == modulus1
     
-    # Test change_modulus! (in-place)
+    # Test change_modulus (in-place)
     C = GpuMatrixModN(A_data, modulus1)
-    change_modulus!(C, modulus2)
+    D = change_modulus(C, modulus2)
     
-    println("C after change_modulus!(C, $modulus2) = ")
-    display(C)
+    println("C after change_modulus(C, $modulus2) = ")
+    display(D)
     println()
     
     # Check properties and values
-    @test C.N == modulus2
-    @test Array(C) == mod.(A_data, modulus2)
+    @test D.N == modulus2
+    @test Array(D) == mod.(A_data, modulus2)
     
     println("All modulus-changing function tests passed!")
 end

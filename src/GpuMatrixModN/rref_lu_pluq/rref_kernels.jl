@@ -1,14 +1,15 @@
 using CUDA, LinearAlgebra
+# include("../gpu_matrix_mod_N/gpu_mat.jl")
 
-const global TILE_WIDTH = 4
+# const global TILE_WIDTH = 4
 const global TYPE = Float32
 
 """
-    rref_gpu(A::Array, P::Int)
+    old_rref_gpu(A::Array, P::Int)
 
 Row reduces matrix A mod P on the GPU.
 """
-function rref_gpu(A, P)
+function old_rref_gpu(A, P)
 
     # Find dimensions and padded
     A_rows, A_cols = size(A)

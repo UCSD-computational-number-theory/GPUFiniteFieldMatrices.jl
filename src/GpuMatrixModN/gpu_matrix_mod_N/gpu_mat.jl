@@ -1,6 +1,6 @@
 using CUDA, LinearAlgebra
 
-const TILE_WIDTH = 32
+global const TILE_WIDTH = 32
 const DEFAULT_TYPE = Float32
 
 struct MatrixTooLargeException <: Exception
@@ -40,7 +40,7 @@ pads to multiples of TILE_WIDTH (32) for efficient GPU computation.
 Note matrices over the permitted size for efficient matmul may be created, but matmul 
 will throw an exception if these matrices are multiplied.
 """
-struct GpuMatrixModN{T}
+mutable struct GpuMatrixModN{T}
     data::CuArray{T, 2}  # Padded CuArray data
     rows::Int            # Actual row count
     cols::Int            # Actual column count
@@ -422,9 +422,7 @@ function add!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integ
         ))
     end
 
-    # TODO: Time them
-    # @. C.data = mod(A.data + B.data, N)
-    mod.(add!(C.data, A.data, B.data), N)
+    @. C.data = mod(A.data + B.data, N)
 
     return C
 end
@@ -449,8 +447,7 @@ function sub!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::Integ
         ))
     end
     
-    # @. C.data = mod(A.data - B.data, N)
-    mod.(sub!(C.data, A.data, B.data), N)
+    @. C.data = mod(A.data - B.data, N)
     
     return C
 end
@@ -500,7 +497,7 @@ function negate!(B::GpuMatrixModN, A::GpuMatrixModN, mod_N::Integer=-1)
         ))
     end
 
-    B.data = mod.(-A.data .+ N, N)
+    @. B.data = mod(-A.data + N, N)
     return B
 end
 
@@ -529,12 +526,12 @@ function scalar_add!(B::GpuMatrixModN, A::GpuMatrixModN, s::Number, mod_N::Integ
 end
 
 """
-    scalar_subtract!(B, A, s, [mod_N])
+    scalar_sub!(B, A, s, [mod_N])
 
 In-place scalar subtraction: B = A - s mod N. No allocation is performed.
 If mod_N is provided, it will be used instead of B.N for the modulus.
 """
-function scalar_subtract!(B::GpuMatrixModN, A::GpuMatrixModN, s::Number, mod_N::Integer=-1)
+function scalar_sub!(B::GpuMatrixModN, A::GpuMatrixModN, s::Number, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : B.N
     
     if mod_N <= 0 && A.N != B.N
@@ -602,7 +599,7 @@ function multiply!(C::GpuMatrixModN, A::GpuMatrixModN, B::GpuMatrixModN, mod_N::
         ))
     end
     
-    mat_mul_gpu_type(A, B, N, C=C)
+    mat_mul_gpu_type(C, A, B, N)
     return C
 end
 
@@ -637,37 +634,21 @@ function mod_elements!(A::GpuMatrixModN, mod_N::Integer=-1)
 end
 
 # Utility functions to change modulus
+
 """
     change_modulus(A, new_N)
-
-Creates a new GpuMatrixModN with the same values as A but with a different modulus.
-All elements are reduced modulo new_N.
-"""
-function change_modulus(A::GpuMatrixModN, new_N::Integer)
-    result = CUDA.zeros(eltype(A.data), A.data.rows, A.data.cols, new_N)
-    
-    if new_N < A.N
-        @. result.data = mod(A.data, new_N)
-    else
-        @. result.data = A.data
-    end
-     
-    return GpuMatrixModN(result, new_N, new_rows=A.rows, new_cols=A.cols)
-end
-
-"""
-    change_modulus!(A, new_N)
 
 Changes the modulus of A in-place to new_N.
 All elements are reduced modulo new_N.
 """
-function change_modulus!(A::GpuMatrixModN, new_N::Integer)
+function change_modulus(A::GpuMatrixModN, new_N::Integer)
+    B = GpuMatrixModN(A.data, new_N, new_rows=A.rows, new_cols=A.cols)
+
     if new_N < A.N
-        @. A.data = mod(A.data, new_N)
+        @. B.data = mod(A.data, new_N)
     end
 
-    setfield!(A, :N, new_N)
-    return A
+    return B
 end
 
 function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T

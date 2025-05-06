@@ -1,6 +1,7 @@
 using CUDA, LinearAlgebra
 
-const global TILE_WIDTH = 25
+# include("../gpu_matrix_mod_N/gpu_mat.jl")
+# const global TILE_WIDTH = 25
 
 """
     GPU MatMul with counting number of operations,
