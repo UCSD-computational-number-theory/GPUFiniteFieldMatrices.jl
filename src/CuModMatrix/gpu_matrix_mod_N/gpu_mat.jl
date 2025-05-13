@@ -78,7 +78,8 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         #but this doesn't seem to be implemented in CUDA.jl.
         #For now, we can deal with a little extra (cpu) allocation 
         #in creation of matrices.
-        data[data_inds] = converted[A_inds]
+        dataview = @view data[data_inds]
+        copyto!(dataview,converted)
         
         if mod
             threads = 32
@@ -764,6 +765,21 @@ function Base.copy!(B::CuModArray, A::CuModArray)
     CUDA.copy!(B.data, A.data)
     return B
 end
+
+"""
+    copyto!(dest::CuModArray, src::AbstractArray)
+
+Copy the data from dest to src. This is useful for sending
+data to the gpu.
+"""
+function Base.copyto!(dest::CuModArray, src::AbstractArray)
+    rangesize = map(x -> 1:x,size(A))
+    data_inds = CartesianIndices(rangesize)
+
+    dataview = @view dest[data_inds]
+    copyto!(dataview,src)
+end
+
 
 """
     fill!(A::CuModArray{T,D}, s::T) where {T,D}
