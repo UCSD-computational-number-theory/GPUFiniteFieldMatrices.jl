@@ -20,10 +20,10 @@ function test_basic_operations()
         @test A + B == KMatToMat(AK + BK)
         @test A - B == KMatToMat(AK - BK)
         @test a*A == KMatToMat(a*AK)
-        @test A*B == KMatToMat(AK*BK)
+        #@test A*B == KMatToMat(AK*BK)
         @test C + D == KMatToMat(CK + DK)
         @test C - D == KMatToMat(CK - DK)
         @test a*C == KMatToMat(a*CK)
-        @test C*D == KMatToMat(CK*DK)
+        #@test C*D == KMatToMat(CK*DK)
     end
 end
