@@ -64,12 +64,12 @@ function lu_gpu(A, P)
 
         k = find_pivot_idx(d_A, A_rows, row, col)
         p = find_pivot_val(d_A, A_rows, row, col)
-        if DEBUG
-            println("Finding pivots")
-            println("k: ", k)
-            println("p: ", p)
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Finding pivots")
+        #     println("k: ", k)
+        #     println("p: ", p)
+        #     println("d_A: ", d_A)
+        # end
 
         if p == 0
             col += 1
@@ -78,28 +78,28 @@ function lu_gpu(A, P)
 
         p_inv = mod_inv(p, P)
         swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, P, Perm)
-        if DEBUG
-            println("Swap and mod")
-            println("p_inv: ",p_inv)
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Swap and mod")
+        #     println("p_inv: ",p_inv)
+        #     println("d_A: ", d_A)
+        # end
 
-        normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, P)
-        if DEBUG
-            println("Normalize")
-            println("d_L: ", d_L)
-            println("d_A: ", d_A)
-        end
+        normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, p, P)
+        # if DEBUG
+        #     println("Normalize")
+        #     println("d_L: ", d_L)
+        #     println("d_A: ", d_A)
+        # end
 
         if row == A_rows || col == A_cols
             break
         end
 
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A_rows-row,TILE_WIDTH)+1,1) update_sub_matrix_row(d_A, row, col, div(A_cols-col,TILE_WIDTH), P)
-        if DEBUG
-            println("Update Sub Matrix")
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Update Sub Matrix")
+        #     println("d_A: ", d_A)
+        # end
 
         row += 1
         L_col += 1
@@ -139,21 +139,21 @@ function plup_gpu(A, P)
         end
 
         while find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
-            if DEBUG
-                println("Swapping columns")
-                println("Perm_col_idx: ", Perm_col_idx)
-            end
+            # if DEBUG
+            #     println("Swapping columns")
+            #     println("Perm_col_idx: ", Perm_col_idx)
+            # end
             Perm_col_idx -= 1
         end
 
         k = find_pivot_idx(d_A, A_rows, row, col)
         p = find_pivot_val(d_A, A_rows, row, col)
-        if DEBUG
-            println("Finding pivots")
-            println("k: ", k)
-            println("p: ", p)
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Finding pivots")
+        #     println("k: ", k)
+        #     println("p: ", p)
+        #     println("d_A: ", d_A)
+        # end
 
         if p == 0
             d_L[row:end,col] .= 1
@@ -164,29 +164,29 @@ function plup_gpu(A, P)
 
         p_inv = mod_inv(p, P)
         swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, P, Perm_rows)
-        if DEBUG
-            println("Swap and mod")
-            println("p_inv: ",p_inv)
-            println("d_A: ", d_A)
-            println("d_L: ", d_L)
-        end
+        # if DEBUG
+        #     println("Swap and mod")
+        #     println("p_inv: ",p_inv)
+        #     println("d_A: ", d_A)
+        #     println("d_L: ", d_L)
+        # end
 
         normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p, P)
-        if DEBUG
-            println("Normalize")
-            println("d_L: ", d_L)
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Normalize")
+        #     println("d_L: ", d_L)
+        #     println("d_A: ", d_A)
+        # end
 
         if row == A_rows || col == A_cols
             break
         end
 
         @cuda threads=(TILE_WIDTH,TILE_WIDTH) blocks=(div(A_rows-row,TILE_WIDTH)+1,1) update_sub_matrix_row(d_A, row, col, div(A_cols-col,TILE_WIDTH), P)
-        if DEBUG
-            println("Update Sub Matrix")
-            println("d_A: ", d_A)
-        end
+        # if DEBUG
+        #     println("Update Sub Matrix")
+        #     println("d_A: ", d_A)
+        # end
 
         row += 1
         col += 1
@@ -196,13 +196,11 @@ function plup_gpu(A, P)
 end
 
 function find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
-    CUDA.allowscalar() do
-        max_val = maximum(Array(d_A[row:A_rows,col]))   
-        if max_val == 0
-            d_A[:,col], d_A[:,Perm_col_idx] = d_A[:,Perm_col_idx], d_A[:,col]
-            Perm_cols[col], Perm_cols[Perm_col_idx] = Perm_cols[Perm_col_idx], Perm_cols[col]
-            return true
-        end
+    max_val = @view d_A[row:A_rows,col]
+    if maximum(max_val) == 0
+        d_A[:,col], d_A[:,Perm_col_idx] = d_A[:,Perm_col_idx], d_A[:,col]
+        Perm_cols[col], Perm_cols[Perm_col_idx] = Perm_cols[Perm_col_idx], Perm_cols[col]
+        return true
     end
     return false
 end
@@ -214,11 +212,11 @@ end
 
 function find_pivot_idx(d_A::CUDA.CuArray, A_rows::Int, row::Int, col::Int)
     A_temp = @view d_A[row:A_rows,col]
-    return argmax(A_temp) + row - 1
+    return argmax(A_temp)
 end
 
 function find_pivot_val(d_A, A_rows, row, col)
-    A_temp = @view d_A[row:end,col]
+    A_temp = @view d_A[row:A_rows,col]
     return maximum(A_temp)
 end
 
@@ -295,13 +293,13 @@ function swap_and_mod(d_A, k, p_row, inv, P)
     return
 end
 
-function swap_and_mod_lu(d_A, d_L, k, p_row, inv, P, Perm)
+function swap_and_mod_lu(d_A, d_L, k, p_row, p_inv, N, Perm)
 
     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
     d_L[k,:], d_L[p_row,:] = d_L[p_row,:], d_L[k,:]
     Perm[k], Perm[p_row] = Perm[p_row], Perm[k]
 
-    d_A[p_row,:] = (d_A[p_row,:] .* inv) .% P 
+    @. d_A[p_row,:] = mod((d_A[p_row,:] * p_inv), N)
     return
 end
 
@@ -342,56 +340,64 @@ function normalize_broadcast(d_A, col, p_inv, P)
     return
 end
 
-function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p, P)
-    d_L[row:end,L_col] .= p
-    d_L[row+1:end,L_col] = d_A[row+1:A_rows,L_col]
-    # d_L[row+1:end,L_col] = mod_inv.(Array(d_A[row+1:A_rows,L_col]), P)
-    return
+"""
+    normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, P)
+
+Update the L matrix values during LU decomposition.
+"""
+# function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p, P)
+#     d_L[row:end,L_col] .= p
+#     d_L[row+1:end,L_col] = d_A[row+1:A_rows,L_col]
+#     d_L[row+1:end,L_col] = mod_inv.(Array(d_A[row+1:A_rows,L_col]), P)
+#     return
+# end
+function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, p, N)
+    d_L[row:end, L_col] .= p
+
+    @. d_L[row+1:end, L_col] = d_A[row+1:end, L_col]
 end
 
-function update_sub_matrix_row(d_A, p_row, p_col, bound, P)
-    tid = threadIdx().x
-    yid = threadIdx().y
-    bid = blockIdx().x
-    idx = tid + (bid - 1) * blockDim().x
-
-    # Skip if we're at the pivot row
-    if idx == 0
+function update_sub_matrix_row(d_A, p_row, p_col, P)
+    tid = threadIdx().x  # Thread ID within block
+    bid = blockIdx().x   # Block ID
+    
+    # Calculate which row this thread is responsible for
+    row_idx = tid + (bid - 1) * blockDim().x + p_row
+    
+    # Skip if we're beyond the matrix size
+    if row_idx <= p_row || row_idx > size(d_A, 1)
         return
     end
-
+    
     # Get the value in the pivot column for this row
-    pivot_col_val = d_A[p_row + idx, p_col]
+    pivot_col_val = d_A[row_idx, p_col]
     
     # If the value is already 0, no need to update
     if pivot_col_val == 0
         return
     end
-
-    row_inv = P - pivot_col_val
-    shared_row = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
-
-    m = 0
-    while m <= bound
-        shared_row[yid] = d_A[p_row, p_col + yid + m*TILE_WIDTH]
-        CUDA.sync_threads()
-
-        # Only update if the value in the pivot column is non-zero
-        if pivot_col_val != 0
-            temp = shared_row[yid] * row_inv
-            temp = temp + d_A[p_row + idx, p_col + yid + m*TILE_WIDTH]
-            d_A[p_row + idx, p_col + yid + m*TILE_WIDTH] = temp % P
+    
+    # Calculate the multiplier (P - pivot_col_val for subtraction in modular arithmetic)
+    multiplier = P - pivot_col_val
+    
+    # Process all columns from pivot column to the end- 
+    for col_offset = 0:TILE_WIDTH
+        col_idx = p_col + col_offset
+        
+        # Make sure we don't go beyond the matrix width
+        if col_idx <= size(d_A, 2)
+            # Get pivot row value and current cell value
+            pivot_val = d_A[p_row, col_idx]
+            current_val = d_A[row_idx, col_idx]
+            
+            # Apply the row operation (equivalent to subtracting a multiple of pivot row)
+            d_A[row_idx, col_idx] = mod((current_val + multiplier * pivot_val), P)
         end
-
-        m += 1
-        CUDA.sync_threads()
     end
-
-    # Only zero out the pivot column if we actually updated the row
-    if pivot_col_val != 0
-        d_A[p_row + idx, p_col] = 0
-    end
-
+    
+    # Zero out the pivot column value
+    d_A[row_idx, p_col] = 0
+    
     return
 end
 

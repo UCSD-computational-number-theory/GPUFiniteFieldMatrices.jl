@@ -243,45 +243,45 @@ end
 
 # Display function
 function Base.show(io::IO, A::CuModArray)
-    println(io, "$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
+    println("$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
 
     # Note this does not display the padding
-    println(io, Array(A))
+    println(Array(A))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModArray)
-    println(io, "$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
-    # Base.print_matrix(io, Array(A))
+    println("$(join(string.(size(A)),"×")) CuModArray modulo $(A.N):")
+    # Base.println_matrix(Array(A))
     remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
-    println(io, remove_first_line(repr("text/plain", Array(A))))
+    println(remove_first_line(repr("text/plain", Array(A))))
 end
 
 function Base.show(io::IO, A::CuModVector)
-    println(io, "$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
+    println("$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
 
     # Note this does not display the padding
-    println(io, Array(A))
+    println(Array(A))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModVector)
-    println(io, "$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
-    # Base.print_matrix(io, Array(A))
+    println("$(join(string.(size(A)),"×")) CuModVector modulo $(A.N):")
+    # Base.println_matrix(Array(A))
     remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
-    println(io, remove_first_line(repr("text/plain", Array(A))))
+    println(remove_first_line(repr("text/plain", Array(A))))
 end
 
 function Base.show(io::IO, A::CuModMatrix)
-    println(io, "$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
+    println("$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
 
     # Note this does not display the padding
-    println(io, Array(A))
+    println(Array(A))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", A::CuModMatrix)
-    println(io, "$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
-    # Base.print_matrix(io, Array(A))
+    println("$(join(string.(size(A)),"×")) CuModMatrix modulo $(A.N):")
+    # Base.println_matrix(Array(A))
     remove_first_line(s) = join(split(s,"\n")[2:end], "\n")
-    println(io, remove_first_line(repr("text/plain", Array(A))))
+    println(remove_first_line(repr("text/plain", Array(A))))
 end
 
 # Basic arithmetic operations with greedy reduction
@@ -411,6 +411,7 @@ function is_invertible_with_inverse(A::CuModMatrix)
     if !is_invertible(A)
         return false, nothing
     end
+
     return true, inverse(A)
 end
 
@@ -419,12 +420,33 @@ end
 
 Checks if a matrix is invertible mod N.
 """
-function is_invertible(A::CuModMatrix{T}) where T
-    # assuming isprime(A.N)
-    if rows(A) != cols(A)
-        return false
+function is_invertible(A::CuModMatrix)
+    P, L, U, Q = plup_gpu_type(A)
+    P = perm_array_to_matrix(P, A.N; new_size=(rows(A), rows(A)))
+    Q = perm_array_to_matrix(Q, A.N; new_size=(cols(A), cols(A)))
+
+    println("The GCD Matrix")
+    println(Array(P*U))
+    println(Array(U))
+    println(Array(L))
+    println(Array(P))
+    println(Array(Q))
+    println(Array(P*L*U*Q))
+    for diag_elem in diag(Array(U))
+        if gcd(diag_elem, A.N) > 1
+            return false
+        end
     end
+
     return true
+end
+
+function gcd(a,b)
+    a, b = abs(a), abs(b)
+    while b != 0
+        a, b = b, a % b
+    end
+    return a
 end
 
 """
@@ -439,52 +461,24 @@ function inverse(A::CuModMatrix)
         ))
     end
     
-    # Find PLUQ decomposition and find inverse of each component
-    U, L, P_rows, P_cols = plup_gpu_type(A)
-    n = rows(A)
+    U, L, P, Q = plup_gpu_type(A)
 
-    # Convert permutation vectors to matrices
-    P = zeros(Int, n, n)
-    Q = zeros(Int, n, n)
-    for i in 1:n
-        P[P_rows[i], i] = 1
-        Q[i, P_cols[i]] = 1
+    U_diag = diag(Array(U))
+    rank = count(U_diag .!= 0)
+
+    if r == 0
+        return zeros(eltype(A.data), rows(A), cols(A))
     end
 
-    # Calculate L⁻¹
-    L_inv = CUDA.ones(Int, n, n)
-    L_inv = CUDA.tril(L_inv) 
-    
-    # Using iterative approach for L⁻¹
-    for k in 2:n
-        L_sub = L_gpu[k, 1:k-1]
-        L_inv_sub = L_inv[1:k-1, 1:k-1]
-        new_row = -(L_sub * L_inv_sub)
-        L_inv[k, 1:k-1] = mod.(new_row, A.N)
-    end
-    
-    # Calculate U⁻¹ (U is upper triangular)
-    U_inv = CUDA.zeros(Int, n, n)
-    diag_U = CUDA.diag(U_gpu)
-    # a^(p-2) ≡ a^(-1) (mod p) for prime p
-    diag_U_inv = mod.(powermod.(diag_U, A.N-2, A.N), A.N)
-    for i in 1:n
-        U_inv[i, i] = diag_U_inv[i]
-    end
-    
-    # Using iterative approach for U⁻¹
-    for k in (n-1):-1:1
-        for j in (k+1):n
-            sum_term = CUDA.sum(U_gpu[k, (k+1):j] .* U_inv[(k+1):j, j])
-            U_inv[k, j] = mod(-sum_term * U_inv[k, k], A.N)
-        end
-    end
-    
-    # Calculate inverse: A⁻¹ = Qᵀ·U⁻¹·L⁻¹·Pᵀ
-    UL_inv = mod.(U_inv * L_inv, A.N)
-    A_inv = mod.(CUDA.transpose(Q) * UL_inv * CUDA.transpose(P), A.N)
+    L_new = @view L[:, 1:r]
+    U_new = @view U[1:r, :]
 
-    CuModMatrix(A_inv, A.N, new_size(n,n))
+    U_inv = backward_sub_gpu_type(U_new, true)
+    L_inv = backward_sub_gpu_type(L_new, false)
+
+    A_inv = Q * U_inv * L_inv * P
+
+    return A_inv
 end
 
 # Additional utility functions
