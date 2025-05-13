@@ -44,63 +44,43 @@ function hensel_pseudoinverse(p, precision, A, T)
     return matrix(R, [R(x) for x in Array(T)])
 end
 
-function backsubstitution_shared_kernel(U::CuArray{T, 2}, x, b, N) where T
-    tid = threadIdx().x
-    bid = blockIdx().x
-    n = size(U, 1)
-    
-    shared_sum = CUDA.CuStaticSharedArray(Int, (TILE_WIDTH))
-    
-    for i = n:-1:1
-        if tid == 1 && bid == 1
-            sum = b[i]
-            for j = i+1:n
-                sum = (sum - (U[i, j] * x[j]) % N) % N
-                if sum < 0
-                    sum += N
-                end
-            end
-            
-            diag_inv = mod_inv(U[i, i], N)
-            x[i] = (sum * diag_inv) % N
-        end
-        
-        CUDA.sync_threads()
-    end
-    
-    return nothing
-end
-
-function backsubstitution_shared(U::CuModMatrix{T}, b) where T
-    n = rows(U)
-    N = U.N
-    x = CUDA.zeros(Int, n)
-    d_b = CuArray(b)
-    
-    @cuda threads=1 blocks=1 backsubstitution_shared_kernel(U.data, x, d_b, N)
-    
-    return Array(x)
-end
-
-function backsubstitution_kernel(U::CuArray{T, 2}, x, b, N) where T
+function triangular_inverse_kernel(A::CuArray, A_inv::CuArray, N::Int, is_upper::Bool)
     tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
-    n = size(U, 1)
+    n = size(A, 1)
     
     if tid <= n
-        for i = n:-1:1
-            CUDA.sync_blocks()
+        for j = 1:n
+            # Choose iteration order based on matrix type
+            if is_upper
+                iter_range = n:-1:1  # Bottom to top for upper triangular
+            else
+                iter_range = 1:n     # Top to bottom for lower triangular
+            end
             
-            if tid == i
-                sum = b[i]
-                for j = i+1:n
-                    sum = (sum - (U[i, j] * x[j]) % N) % N
-                    if sum < 0
-                        sum += N
-                    end
-                end
+            for i in iter_range
+                CUDA.sync_blocks()
                 
-                diag_inv = mod_inv(U[i, i], N)
-                x[i] = (sum * diag_inv) % N
+                if tid == i
+                    sum = i == j ? 1 : 0
+                    
+                    if is_upper
+                        # For upper triangular, sum over elements to the right
+                        dep_range = i+1:n
+                    else
+                        # For lower triangular, sum over elements to the left
+                        dep_range = 1:i-1
+                    end
+                    
+                    for k in dep_range
+                        sum = (sum - (A[i, k] * A_inv[k, j]) % N) % N
+                        if sum < 0
+                            sum += N
+                        end
+                    end
+                    
+                    diag_inv = mod_inv(A[i, i], N)
+                    A_inv[i, j] = (sum * diag_inv) % N
+                end
             end
         end
     end
@@ -108,16 +88,10 @@ function backsubstitution_kernel(U::CuArray{T, 2}, x, b, N) where T
     return nothing
 end
 
-function backsubstitution(U::CuModMatrix{T}, b) where T
-    n = rows(U)
-    N = U.N
-    x = CUDA.zeros(Int, n)
-    d_b = CuArray(b)
+function backward_sub_gpu_type(A::CuModMatrix, is_upper::Bool)
+    d_A = GPUFiniteFieldMatrices.zeros(Int, rows(A), rows(A))
+
+    @cuda threads=(TILE_WIDTH) blocks=(div(rows(A),TILE_WIDTH)+1) triangular_inverse_kernel(A.data, d_A, A.N, is_upper)
     
-    threads_per_block = min(256, n)
-    num_blocks = ceil(Int, n / threads_per_block)
-    
-    @cuda threads=threads_per_block blocks=num_blocks backsubstitution_kernel(U.data, x, d_b, N)
-    
-    return Array(x)
+    return CuModMatrix(d_A, A.N, new_size=(rows(A), rows(A)))
 end

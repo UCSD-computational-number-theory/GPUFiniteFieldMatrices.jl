@@ -1,8 +1,3 @@
-#using GPUFiniteFieldMatrices
-#using Test
-#using CUDA
-#using LinearAlgebra
-
 """
 Test row reduction operations on CuModMatrix.
 This tests both the standard and direct implementations.
@@ -124,35 +119,22 @@ Test PLUQ decomposition operations on CuModMatrix.
 function test_pluq_operations()
     println("Testing PLUQ decomposition operations on CuModMatrix...")
     
-    # Test matrix
     A_data = [1 2 3; 4 5 6; 7 8 9]
-    modulus = 11  # Prime modulus
-    
+    modulus = 11
     A = CuModMatrix(A_data, modulus)
     
     println("Matrix A = ")
     display(A)
     println()
     
-    # Test using the plup_gpu_direct function
-    println("Testing pluq_gpu_direct...")
-    U, L, P_rows, P_cols = plup_gpu_direct(A)
-    
-    println("U = ")
-    display(U)
-    println()
-    
-    println("L = ")
-    display(L)
-    println()
-    
-    println("P_rows = ", P_rows)
-    println("P_cols = ", P_cols)
-    println()
-    
-    # Test using the new direct implementation
     println("Testing pluq_gpu_type...")
     U_type, L_type, P_rows_type, P_cols_type = plup_gpu_type(A)
+    println(typeof(P_rows_type))
+    println(typeof(P_cols_type))
+    println(P_rows_type)
+    println(P_cols_type)
+    P_rows = perm_array_to_matrix(P_rows_type, modulus; new_size=(3,3))
+    P_cols = perm_array_to_matrix(P_cols_type, modulus; new_size=(3,3))
     
     println("U_type = ")
     display(U_type)
@@ -161,34 +143,101 @@ function test_pluq_operations()
     println("L_type = ")
     display(L_type)
     println()
-    
-    # Check that both implementations yield the same result
-    @test Array(U) ≈ Array(U_type)
-    @test Array(L) ≈ Array(L_type)
-    @test P_rows == P_rows_type
-    @test P_cols == P_cols_type
-    
-    # Test with modulus override
-    override_modulus = 7
-    U_mod, L_mod, P_rows_mod, P_cols_mod = plup_gpu_type(A, override_modulus)
-    
-    println("PLUP decomposition with modulus $override_modulus:")
-    println("U_mod = ")
-    display(U_mod)
+
+    println("P_rows_type = ", P_rows)
+    display(P_rows)
     println()
     
-    println("L_mod = ")
-    display(L_mod)
+    println("P_cols_type = ", P_cols)
+    display(P_cols)
     println()
+
+    @test Array(P_rows * L_type * U_type * P_cols) ≈ Array(A)
+    @test mod.(Array(P_rows) * Array(L_type) * Array(U_type) * Array(P_cols), modulus) ≈ Array(A)
+    @test P_rows_type[1:3] == [3,1,2]
+    @test P_cols_type[1:3] == [1,2,3]
+
+    println("Testing PLUQ decomposition operations on non-squareCuModMatrix...")
+    
+    A_data = [1 2 3; 4 5 6; 7 8 9; 10 11 12]
+    modulus = 13
+    A = CuModMatrix(A_data, modulus)
+    
+    println("Matrix A = ")
+    display(A)
+    println()
+    
+    println("Testing pluq_gpu_type...")
+    U_type, L_type, P_rows_type, P_cols_type = plup_gpu_type(A)
+    P_rows = perm_array_to_matrix(P_rows_type, modulus; new_size=(4,4))
+    P_cols = perm_array_to_matrix(P_cols_type, modulus; new_size=(3,3))
+    
+    println("U_type = ")
+    display(U_type)
+    println()
+    
+    println("L_type = ")
+    display(L_type)
+    println()
+
+    println("P_rows_type = ", P_rows)
+    display(P_rows)
+    println()
+    
+    println("P_cols_type = ", P_cols)
+    display(P_cols)
+    println()
+
+    @test Array(P_rows * L_type * U_type * P_cols) ≈ Array(A)
+    @test mod.(Array(P_rows) * Array(L_type) * Array(U_type) * Array(P_cols), modulus) ≈ Array(A)
+    @test P_rows_type[1:4] == [4,3,2,1]
+    @test P_cols_type[1:3] == [1,2,3]
     
     println("All PLUP decomposition tests passed!")
+end
+
+"""
+Test inverse operations on CuModMatrix.
+"""
+function test_inverse_operations()
+    println("Testing inverse operations on CuModMatrix...")
+    
+    A_data = [1 2 3; 4 5 6; 7 8 9]
+    modulus = 11
+    A = CuModMatrix(A_data, modulus)
+    
+    println("Matrix A = ")
+    display(A)
+    println()
+    
+    println("Testing inverse...")
+    A_has_inverse, A_inv = is_invertible_with_inverse(A)
+    println("A has inverse: ", A_has_inverse)
+    println("A_inv = ")
+    display(A_inv)
+    println(typeof(A_inv))
+    println()
+
+    @test A_has_inverse
+    @test A * A_inv ≈ CuModMatrix(I, modulus)
+
+    println("Testing inverse of identity matrix...")
+    B = GPUFiniteFieldMatrices.eye(Int, 3, modulus)
+    B_has_inverse, B_inv = is_invertible_with_inverse(B)
+    @test B_has_inverse
+    @test B * B_inv ≈ CuModMatrix(I, modulus)
+    @test B_inv * B ≈ CuModMatrix(I, modulus)
+    @test B_inv == B
+    
+    println("All inverse operations tests passed!")
 end
 
 # Run all tests
 function test_pluq()
     test_rref_operations()
-    # test_lu_operations()
-    # test_pluq_operations()
+    test_lu_operations()
+    test_pluq_operations()
+    # test_inverse_operations()
     
     println("\nAll RREF and decomposition tests passed!")
 end

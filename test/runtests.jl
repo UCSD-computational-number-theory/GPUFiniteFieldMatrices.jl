@@ -49,11 +49,14 @@ function run_all_tests()
     end 
 end
 
-# if isfile("tests.log")
-#     open("tests.log", "w") do io
-#         output = @capture_out run_all_tests()
-#         println(io, output)
-#     end
-# else
-run_all_tests()
-# end
+if isfile("tests.log")
+    open("tests.log", "w") do io
+        redirect_stdout(io) do
+            redirect_stderr(io) do
+                run_all_tests()
+            end
+        end
+    end
+else
+    run_all_tests()
+end
