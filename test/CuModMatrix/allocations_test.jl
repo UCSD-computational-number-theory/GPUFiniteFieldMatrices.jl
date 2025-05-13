@@ -53,6 +53,11 @@ function test_allocations()
     result = CUDA.@timed mul!(z,A,x)
     @test result[:gpu_bytes] < 10
    
+    A_fl_data = convert.(Float64,A_data)
+    trash = CUDA.@timed CuModMatrix{Float64}(A_fl_data,11) # prime thie jitter
+    result = CUDA.@timed CuModMatrix{Float64}(A_fl_data,11)
+    @test result[:cpu_bytes] < 1_000_000 # 1 megabyte
+
     CUDA.@sync println("Done testing allocations.")
 end
 
