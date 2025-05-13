@@ -769,13 +769,22 @@ end
 
 Copy the data from dest to src. This is useful for sending
 data to the gpu.
-"""
-function Base.copyto!(dest::CuModArray, src::AbstractArray)
-    rangesize = map(x -> 1:x,size(A))
-    data_inds = CartesianIndices(rangesize)
 
-    dataview = @view dest[data_inds]
-    copyto!(dataview,src)
+Does not mod.
+"""
+function Base.copyto!(dest::CuModArray{T}, src::AbstractArray{T}) where T
+    if size(dest) != size(src)
+        throw(CuModArraySizeMismatchException(
+            "Matrix dimensions must match"
+        ))
+    end
+
+    #rangesize = map(x -> 1:x,size(dest))
+    #data_inds = CartesianIndices(rangesize)
+    inds = CartesianIndices(src)
+
+    #dataview = @view dest[data_inds]
+    copyto!(dest.data,inds,src,inds)
 end
 
 
