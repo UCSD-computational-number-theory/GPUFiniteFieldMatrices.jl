@@ -36,6 +36,6 @@ export rref_gpu_type, lu_gpu_type, plup_gpu_type
 export mat_mul_gpu_type, mat_mul_type_inplace!
 export perm_array_to_matrix
 export backward_sub_gpu_type, forward_sub_gpu_type
-export is_invertible, inverse, is_invertible_with_inverse
+#export is_invertible, inverse, is_invertible_with_inverse
 
 end
