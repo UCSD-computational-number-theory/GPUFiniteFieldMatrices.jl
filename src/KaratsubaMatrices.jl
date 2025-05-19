@@ -107,50 +107,42 @@ function KMatMul!(C::KMat,A::KMat,B::KMat,plan::KMatMulPlan)
     C.h .= C.h - A.h*B.h
 end
 
-function KMatToMat(K::KMat)
+#Converts KMat to Mat
+function Base.Array(K::KMat)
     A = zeros(eltype(K.l),nrows(K.l),ncols(K.l))
     A = K.l + K.m*K.h
-    return A
+    A
 end
 
-function KMatToMat(T,K)
+function KMatToMat(T::Type,K::KMat)
     A = zeros(T,nrows(K.l),ncols(K.l))
     A = K.l + K.m*K.h
-    return A
+    A
 end
 
-function MatToKMat(A,M)
-    K = KMat{Matrix{eltype(A)},Int}(zeros(eltype(A),nrows(A),ncols(A)),zeros(eltype(A),nrows(A),ncols(A)),M)
-    K.h .= trunc.(A./M)
-    K.l .= A - K.m*K.h
-    return K
+function MatToKMat(A::AbstractArray,M)
+    MatToKMat(eltype(A),A,M)
 end
 
-function MatToKMat(A)
+function MatToKMat(A::AbstractArray)
     M = find_max_ops(eltype(A),max(size(A)...))
-    K = KMat(zeros(eltype(A),nrows(A),ncols(A)),zeros(eltype(A),nrows(A),ncols(A)),M)
-    K.h .= trunc.(A./M)
-    K.l .= A - K.m*K.h
-    return K
+    MatToKMat(eltype(A),A,M)
 end
 
-function MatToKMat(T,A,M)
-    K = KMat{Matrix{T},Int}(zeros(T,nrows(A),ncols(A)),zeros(T,nrows(A),ncols(A)),M)
+function MatToKMat(T::Type,A::AbstractArray,M)
+    K = KMat(zeros(T,nrows(A),ncols(A)),zeros(T,nrows(A),ncols(A)),M)
     K.h .= trunc.(A./M)
     K.l .= A - K.m*K.h
-    return K
+    K
 end
 
-function MatToKMat(T,A)
+function MatToKMat(T::Type,A::AbstractArray)
     M = find_max_ops(T,max(size(A)...))
-    K = KMat{Matrix{T},Int}(zeros(T,nrows(A),ncols(A)),zeros(T,nrows(A),ncols(A)),M)
-    K.h .= trunc.(A./M)
-    K.l .= A - K.m*K.h
-    return K
+    MatToKMat(T,A,M)
 end
 
 function KMatZero(T,rows,cols,M)
-    return K = KMat{Matrix{T},Int}(zeros(T,rows,cols),zeros(T,rows,cols),M)
+    K = KMat{Matrix{T},Int}(zeros(T,rows,cols),zeros(T,rows,cols),M)
 end
 
 import Base: +, -, *
@@ -158,29 +150,29 @@ import Base: +, -, *
 function +(A::KMat, B::KMat)
     K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
     add!(K,A,B)
-    return K
+    K
 end
 
 function -(A::KMat, B::KMat)
     K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
-    return sub!(K,A,B)
+    sub!(K,A,B)
 end
 
 function *(a::Number, A::KMat)
     K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
     scalar_multiply!(K,A,a)
-    return K
+    K
 end
 
 function *(A::KMat, a::Number)
-    return a * A
+    a * A
 end
 
 function *(A::KMat, B::KMat)
     K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(B.l)),zeros(eltype(A.l),nrows(A.l),ncols(B.l)),A.m)
     plan = KMatMulPlan{Matrix{eltype(A.l)}}(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(B.l),nrows(B.l),ncols(B.l)))
     KMatMul!(K,A,B,plan)
-    return K
+    K
 end
 
 function add!(K::KMat, A::KMat, B::KMat)
@@ -194,7 +186,7 @@ function add!(K::KMat, A::KMat, B::KMat)
     K.h .= trunc.((A.l+B.l)./A.m)
     K.l .= A.l + B.l - A.m*K.h
     K.h .= K.h + A.h + B.h
-    return K
+    K
 end
 
 function sub!(C::KMat, A::KMat, B::KMat)
@@ -208,7 +200,7 @@ function sub!(C::KMat, A::KMat, B::KMat)
     C.h .= trunc.((A.l-B.l)./A.m)
     C.l .= A.l - B.l - A.m*C.h
     C.h .= C.h + A.h - B.h
-    return C
+    C
 end
 
 function scalar_multiply!(B::KMat, A::KMat, s::Number)
