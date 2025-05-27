@@ -1,6 +1,6 @@
-struct KMat{MatrixType,Int}
-    l::MatrixType
-    h::MatrixType
+struct KMat{AbstractArray,Int}
+    l::AbstractArray
+    h::AbstractArray
     m::Int
 
     function KMat(A,B)
@@ -18,11 +18,11 @@ struct KMat{MatrixType,Int}
         if size(A) != size(B)
             error("Dimensions of matrices must match")
         end
-
+        #=
         if !(all(x->x<N,A) && all(x->x<N,B))
             error("Cannot have entries larger than modulus in matrices")
         end
-
+        =#
         if occursin("Float", string(type))
             bits_dict = Dict("64" => 51, "32" => 22, "16" => 9)
             bits_match = match(r"\d+", string(type))
@@ -44,13 +44,13 @@ struct KMat{MatrixType,Int}
             error("Modulus too large")
         end
 
-        return new{Matrix{eltype(A)},Int}(A,B,N)
+        return new{eltype([A]),Int}(A,B,N)
     end
 end
 
-struct KMatMulPlan{MatrixType}
-    temp1::MatrixType
-    temp2::MatrixType
+struct KMatMulPlan{AbstractArray}
+    temp1::AbstractArray
+    temp2::AbstractArray
 end
 
 function find_max_ops(type, N)
@@ -109,13 +109,13 @@ end
 
 #Converts KMat to Mat
 function Base.Array(K::KMat)
-    A = zeros(eltype(K.l),nrows(K.l),ncols(K.l))
+    A = zeros(eltype(K.l),size(K.l)...)
     A = K.l + K.m*K.h
     A
 end
 
 function KMatToMat(T::Type,K::KMat)
-    A = zeros(T,nrows(K.l),ncols(K.l))
+    A = zeros(T,size(K.l)...)
     A = K.l + K.m*K.h
     A
 end
@@ -130,7 +130,12 @@ function MatToKMat(A::AbstractArray)
 end
 
 function MatToKMat(T::Type,A::AbstractArray,M)
-    K = KMat(zeros(T,nrows(A),ncols(A)),zeros(T,nrows(A),ncols(A)),M)
+    if occursin("Cu", string(typeof(A)))
+        K = KMat(CUDA.zeros(T,size(A)...),CUDA.zeros(T,size(A)...),M)
+        M = Int(M)
+    else
+        K = KMat(zeros(T,size(A)...),zeros(T,size(A)...),M)
+    end
     K.h .= trunc.(A./M)
     K.l .= A - K.m*K.h
     K
@@ -148,18 +153,30 @@ end
 import Base: +, -, *
 
 function +(A::KMat, B::KMat)
-    K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
+    if occursin("Cu", string(typeof(A)))
+        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+    else
+        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+    end
     add!(K,A,B)
     K
 end
 
 function -(A::KMat, B::KMat)
-    K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
+    if occursin("Cu", string(typeof(A)))
+        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+    else
+        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+    end
     sub!(K,A,B)
 end
 
 function *(a::Number, A::KMat)
-    K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(A.l),nrows(A.l),ncols(A.l)),A.m)
+    if occursin("Cu", string(typeof(A)))
+        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+    else
+        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+    end
     scalar_multiply!(K,A,a)
     K
 end
@@ -169,8 +186,8 @@ function *(A::KMat, a::Number)
 end
 
 function *(A::KMat, B::KMat)
-    K = KMat(zeros(eltype(A.l),nrows(A.l),ncols(B.l)),zeros(eltype(A.l),nrows(A.l),ncols(B.l)),A.m)
-    plan = KMatMulPlan{Matrix{eltype(A.l)}}(zeros(eltype(A.l),nrows(A.l),ncols(A.l)),zeros(eltype(B.l),nrows(B.l),ncols(B.l)))
+    K = KMat(zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),A.m)
+    plan = KMatMulPlan{Matrix{eltype(A.l)}}(zeros(eltype(A.l),size(A.l)...),zeros(eltype(B.l),size(B.l)...))
     KMatMul!(K,A,B,plan)
     K
 end
