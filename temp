@@ -1,0 +1,313 @@
+#module FindMonomialBasis
+
+#using Oscar
+
+
+# Polynomial Setup
+
+# n = 2 # number of variables - 1
+# d = 3 # degree of homogenous polynomial
+# S, vars = polynomial_ring(R, ["x$i" for i in 0:n])
+# x, y,z = vars
+# f = -x^3 - x*z^2 + y^2*z - z^3
+
+# Examples:
+# p = 7,11,13
+# y^2 - x^3 - x
+# y^2 - x^3 - x - 1
+# x^4 + y^4 + z^4 + w^4
+# x^4 + y^4 + z^4 + w^4 + 2xyzw
+# x^5 + y^5 + z^5 + x
+
+#p = 41
+#R = GF(p)
+#n = 2
+#d = 5
+#PR, vars = polynomial_ring(R, ["x$i" for i in 0:n])
+#x, y, z = vars
+#f = x^5 + y^5 + z^5 + x * y^3 * z
+
+# Given $f, m$, over the ring $\texttt{PR} = R[x_0, \dots, x_n]$, computes the matrix for the map
+# $$(\mu_0, \dots, \mu_n) \mapsto \sum_{i=0}^n \mu_i \partial_i f$$
+# where each $\mu_i$ are monomials of degree $dm - n - 1 - (d-1)$.
+#
+function compute_basis_matrix(f, l, m, R, PR, termorder)
+    n = nvars(parent(f)) - 1
+    d = total_degree(f)
+    vars = gens(PR)
+
+    @assert(0 <= m && m <= n)
+
+    section = binomial(n + l - (d-1), n)
+    domain_mons = compute_monomials(n+1, l - (d - 1), PR, termorder)
+
+    if length(domain_mons) <= 0
+        return []
+    end
+    
+    U = matrix_space(R, binomial(n + l, n), (n+1) * section)
+    M = U()
+
+    partials = [ derivative(f, i) for i in 1:n+1 ]
+
+    #TODO: if the user makes a mistake and puts in a surface that
+    #has two few variables, the error happens here.
+    #We should probably double check for this in ZetaFunction.jl
+    for i in 1:n+1
+        for monomial in eachindex(domain_mons)
+            M[:, section * (i-1) + monomial] = polynomial_to_vector(domain_mons[monomial] * partials[i], n+1, R, PR, termorder)
+        end
+    end
+    
+    return M
+end
+
+
+"""
+    compute_controlled_matrix(f, l, S, R, PR, params)
+
+Given f, m, l, over the ring PR = R[x_0, ..., x_n], and the set S subseteq {0, ..., n}, computes
+the matrix for the map
+(mu_0, ..., mu_n) |--> sum_{i in S} mu_i partial_i f + sum_{i notin S} mu_i x_i partial_i f
+ where mu_i for 0<= i < |S| are of degree l - (d - 1) and mu_i for
+ |S| <= i <= n are of degree l - d.
+
+"""
+function compute_controlled_matrix(f, l, S, R, PR, params)
+    n = nvars(parent(f)) - 1
+    d = total_degree(f)
+    vars = gens(PR)
+
+    len_S = length(S)
+    notS = setdiff(collect(0:n),S)
+    # notS = [2]
+    # Stilda = [1,1,0]
+    len_notS = length(notS)
+    
+    @assert(len_S >= 0 && len_S <= n+1)
+
+    Stilda = zeros(Int, n+1)
+    for i in S
+        Stilda[i+1] = 1
+    end
+
+    in_S_mons_vec = gen_exp_vec(n+1, l-(d-1), params.termorder)
+    not_in_S_mons_vec = gen_exp_vec(n+1, l-d, params.termorder)
+    #in_set_mons = compute_monomials(n+1, l - (d - 1), PR, params.termorder)
+    #not_in_set_mons = compute_monomials(n+1, l - d, PR, params.termorder)
+
+    in_set_section = binomial(n + l - (d-1), n)
+    not_in_set_section =  binomial(n + l - d, n)
+    cols = len_S * in_set_section + (n + 1 - len_S) * not_in_set_section
+
+    if len_S > 0
+        @assert(length(in_S_mons_vec) > 0)
+    end
+    if len_S < n+1
+        @assert(length(not_in_S_mons_vec) > 0)
+    end
+    
+    U = matrix_space(R, binomial(n + l, n), cols)
+    M = U()
+
+    partials = [ derivative(f, i) for i in 1:n+1 ] # ∂_0, ∂_1, ∂_2
+    
+    if params.vars_reversed == true
+        partials = reverse(partials)  # one needs to be quite careful with the ordering of partials 
+        Stilda = reverse(Stilda)
+        vars = reverse(vars)
+        #in_S_mons = gen_mon([reverse(tmp) for tmp in in_S_mons_vec],R,PR)
+        #not_in_S_mons = gen_mon([reverse(tmp) for tmp in not_in_S_mons_vec],R,PR)
+        
+        # this is the correct one
+        in_S_mons = gen_mon(in_S_mons_vec, R, PR)
+        not_in_S_mons = gen_mon(not_in_S_mons_vec, R, PR)
+    else
+        in_S_mons = gen_mon(in_S_mons_vec, R, PR)
+        not_in_S_mons = gen_mon(not_in_S_mons_vec, R, PR)
+    end
+    #println("partials = $partials")
+    #println("Stilda = $Stilda")
+    #println("vars = $vars")
+    #println("in_S_mons = $in_S_mons")
+
+    col_idx = 1
+    for i in 1:(n+1)
+        if Stilda[i] == 1
+            for monomial in eachindex(in_S_mons)
+                #M[:, col_idx] = polynomial_to_vector(in_S_mons[monomial] * partials[i], n+1, R, PR, params.termorder, params.vars_reversed)
+                M[:, col_idx] = polynomial_to_vector(in_S_mons[monomial] * partials[i], n+1, R, PR, params.termorder)
+                col_idx = col_idx + 1
+            end
+        else
+            for monomial in eachindex(not_in_S_mons)
+                #M[:, col_idx] = polynomial_to_vector(not_in_S_mons[monomial] * vars[i] * partials[i], n+1, R, PR, params.termorder, params.vars_reversed)
+                M[:, col_idx] = polynomial_to_vector(not_in_S_mons[monomial] * vars[i] * partials[i], n+1, R, PR, params.termorder)
+                col_idx = col_idx + 1
+            end
+        end 
+    end 
+    
+    #=
+    for i in 1:len_S
+        var = S[i]
+        for monomial in eachindex(in_set_mons)
+            M[:, in_set_section * (i-1) + monomial] = polynomial_to_vector(in_set_mons[monomial] * partials[len_notS+1+var], n+1, R, PR, params.termorder)
+            #M[:, in_set_section * (i-1) + monomial] = polynomial_to_vector(in_set_mons[monomial] * partials[i], n+1, R, PR, params.termorder)
+        end
+    end
+
+    ind_S = in_set_section * len_S
+
+    for i in (len_S+1):n+1
+        var = notS[i-len_S]
+        for monomial in eachindex(not_in_set_mons)
+            M[:, ind_S + not_in_set_section * (i-len_S-1) + monomial] = polynomial_to_vector(not_in_set_mons[monomial] * vars[var+1] * partials[i-len_S], n+1, R, PR, params.termorder)
+            #M[:, not_in_set_section * (i-1) + monomial] = polynomial_to_vector(not_in_set_mons[monomial] * vars[i] * partials[i], n+1, R, PR, params.termorder)
+        end
+    end
+    =#
+    
+    return M
+end
+
+# Computes the monomial basis of $H_{dR}^n(U_{\QQ_p})$. In particular, we find the monomials
+# of degree $l = dm - n - 1$ in $F_p[x_0, \dots, x_n]$ that project onto a basis of the cokernel
+# of the map computed in `compute_classical_mat()`.
+function compute_monomial_basis(f, m, R, PR, termorder)
+    n = nvars(parent(f)) - 1
+    d = total_degree(f)
+    vars = gens(PR)
+
+    ev = gen_exp_vec(n + 1, m*d - n - 1, termorder)
+    row_monomials = gen_mon(ev,R,PR)
+
+    M = compute_basis_matrix(f, d*m - n - 1, m, R, PR, termorder)
+    if isempty(M)
+        return row_monomials
+    end
+
+    rows = size(M)[1]
+
+    temp = size(M)
+
+    pivot_rows = pivot_columns(transpose(M))
+    non_pivot_rows = setdiff([1:rows;], pivot_rows)
+    return map((i) -> row_monomials[i], non_pivot_rows)
+end
+
+# Computes the the monomial bases for different `m`. That is,
+# `compute_monomial_bases(f, R, PR)[m]` will give the `m`-th case.
+function compute_monomial_bases(f, R, PR, termorder)
+    n = nvars(parent(f)) - 1
+
+    res = []
+
+    for m in 1:n
+        push!(res, compute_monomial_basis(f, m, R, PR,termorder))
+    end
+    return res
+end
+
+
+# Computes the pseudo_inverse for the controlled case.
+"""
+Solves the linear algebra problem in section 1.5.2 of Costa's thesis, 
+top of page 23. 
+In other words, finds a pseudo-inverse to the linear map described
+there.
+The map is constructed as a matrix from the polynomial f and the set S.
+
+f - the polynomial defining the hypersurface
+S - the set in [0..n] to be used for the linear algebra problem
+termorder - the order of the monomials used for vectors
+
+I think these are correct: (TODO)
+R - coefficient_ring(parent(f))
+PR- paren(f)
+"""
+function pseudo_inverse_controlled(f, S, l, R, PR, params)
+    n = nvars(parent(f)) - 1
+    d = total_degree(f)
+    
+    PRZZ, VarsZZ = polynomial_ring(ZZ, ["x$i" for i in 0:n])
+    fLift = liftCoefficients(ZZ,PRZZ,f)
+    #println("fLift=$fLift")
+
+    U = compute_controlled_matrix(fLift, l, S, ZZ, PRZZ, params)
+    #U = compute_controlled_matrix(f, l, S, R, PR, params)
+    #println("U=$U")
+    
+    (6 < params.verbose) && println("controlled matrix: \n$U")
+  
+    temp = size(U)
+    
+    # TODO: Test this
+    if use_gpu
+        flag, B = GPUFiniteFieldMatrices.is_invertible_with_inverse(
+            CuModMatrix(
+                matrix(R,[R(x) for x in Array(U)]),
+                N=characteristic(PR),
+                rows=rows(U),
+                cols=cols(U)
+            )
+        )
+    else
+        flag, B = is_invertible_with_inverse(matrix(R,[R(x) for x in Array(U)]), side=:right)
+    end
+    
+    (6 < params.verbose) && println("pinv mod p: \n$B")
+
+    if flag
+        return (U,B)
+    else 
+        if S == collect(0:n) && l == ((d-2)*(n+1)+1)
+            throw(ArgumentError("f is not smooth"))
+        else
+            throw(ArgumentError("matrix from f is not right invertible"))
+        end 
+    end
+end
+
+"""
+    pseudo_inverse_controlled_lifted(f,S,l,M)
+
+Solves the linear algebra problem as in
+`pseudo_inverse_controlled`, but then 
+hensel lifts to Z/p^MZ
+
+f - the polynomial definitng the hypersurface
+S - the set in [0..n] to be used for the linear algebra problem
+l - ???? we need to document this, it's something used by compute_contolled_matrix
+M - the absolute precision to lift to.
+termorder - the order of the monomials used for vectors
+
+"""
+function pseudo_inverse_controlled_lifted(f,S,l,M,params)
+    PR = parent(f)
+    R = coefficient_ring(PR)
+    (U, Sol_fp) = pseudo_inverse_controlled(f,S,l,R,PR,params)
+    lift_to_int64(s) = Int64.(map(x -> lift(ZZ,x),s))
+
+    Sol_mod_p_int = lift_to_int64(Sol_fp)
+    #U_int = lift_to_int64(U)
+
+    #println("Solution mod p: $Sol_fp")
+    #println("U lifted: $U_int")
+
+    p = characteristic(PR)
+    return henselLift(p,M,U,Sol_mod_p_int)
+end
+
+## Computes the pseudo_inverse for the classical case.
+##TODO: update this to reflex changes to pseudo_inverse_controlled
+##it's used in standard reduction, I'll plan to take care of it then
+#function pseudo_inverse_classical(f, R, PR)
+#    return pseudo_inverse_controlled(f, [i for i in 1:n+1], R, PR)
+#end
+#
+#function pseudo_inverse_classicalm(f, m, R, PR)
+#    return pseudo_inverse_controlled(f, [i for i in 1:n+1], R, PR)
+#end
+
+#end
