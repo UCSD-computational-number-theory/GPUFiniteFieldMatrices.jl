@@ -1,18 +1,18 @@
-struct KMat{AbstractArray,Int}
-    l::AbstractArray
-    h::AbstractArray
-    m::Int
+struct KaratsubaArray{T,D} <: AbstractArray{T,D}
+    l::AbstractArray{T,D}
+    h::AbstractArray{T,D}
+    m::Integer
 
-    function KMat(A,B)
+    function KaratsubaArray{T,D}(A::AbstractArray{T,D},B::AbstractArray{T,D}) where {T,D}
         if size(A) != size(B)
             error("Dimensions of matrices must match")
         end
 
         M = find_max_ops(eltype(A),max(size(A)...,size(B)...))
-        return KMat(A,B,M)
+        return new{T,D}(A,B,M)
     end
 
-    function KMat(A,B,N)
+    function KaratsubaArray{T,D}(A::AbstractArray{T,D},B::AbstractArray{T,D},N::Integer) where {T,D}
         type = eltype(A)
 
         if size(A) != size(B)
@@ -44,8 +44,27 @@ struct KMat{AbstractArray,Int}
             error("Modulus too large")
         end
 
-        return new{eltype([A]),Int}(A,B,N)
+        return new{T,D}(A,B,N)
     end
+end
+
+const KaratsubaMatrix{T} = KaratsubaArray{T,2}
+const KaratsubaVector{T} = KaratsubaArray{T,1}
+
+function KaratsubaMatrix(A::AbstractMatrix{T},B::AbstractMatrix{T}) where T
+    KaratsubaArray{T,2}(A,B)
+end
+
+function KaratsubaMatrix(A::AbstractMatrix{T},B::AbstractMatrix{T},M::Integer) where T
+    KaratsubaArray{T,2}(A,B,M)
+end
+
+function KaratsubaVector(A::AbstractMatrix{T},B::AbstractMatrix{T}) where T
+    KaratsubaArray{T,1}(A,B)
+end
+
+function KaratsubaVector(A::AbstractMatrix{T},B::AbstractMatrix{T},M::Integer) where T
+    KaratsubaArray{T,1}(A,B,M)
 end
 
 struct KMatMulPlan{AbstractArray}
@@ -82,7 +101,7 @@ function find_max_ops(type, N)
     
 end
 
-function KMatMul!(C::KMat,A::KMat,B::KMat,plan::KMatMulPlan)
+function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan::KMatMulPlan)
     if (A.m != B.m) || (A.m != C.m)
         error("Matrices must have the same modulus m")
     end
@@ -108,13 +127,14 @@ function KMatMul!(C::KMat,A::KMat,B::KMat,plan::KMatMulPlan)
 end
 
 #Converts KMat to Mat
-function Base.Array(K::KMat)
+function Base.Array(K::KaratsubaArray)
     A = zeros(eltype(K.l),size(K.l)...)
     A = K.l + K.m*K.h
+    println(typeof(A))
     A
 end
 
-function KMatToMat(T::Type,K::KMat)
+function KMatToMat(T::Type,K::KaratsubaArray)
     A = zeros(T,size(K.l)...)
     A = K.l + K.m*K.h
     A
@@ -129,15 +149,15 @@ function MatToKMat(A::AbstractArray)
     MatToKMat(eltype(A),A,M)
 end
 
-function MatToKMat(T::Type,A::AbstractArray,M)
+function MatToKMat(T::Type,A::AbstractArray,M::Integer)
     if occursin("Cu", string(typeof(A)))
-        K = KMat(CUDA.zeros(T,size(A)...),CUDA.zeros(T,size(A)...),M)
+        K = KaratsubaMatrix(CUDA.zeros(T,size(A)...),CUDA.zeros(T,size(A)...),M)
         M = Int(M)
     else
-        K = KMat(zeros(T,size(A)...),zeros(T,size(A)...),M)
+        K = KaratsubaMatrix(zeros(T,size(A)...),zeros(T,size(A)...),M)
     end
     K.h .= trunc.(A./M)
-    K.l .= A - K.m*K.h
+    K.l .= A - Int(K.m)*K.h
     K
 end
 
@@ -146,53 +166,57 @@ function MatToKMat(T::Type,A::AbstractArray)
     MatToKMat(T,A,M)
 end
 
-function KMatZero(T,rows,cols,M)
-    K = KMat{Matrix{T},Int}(zeros(T,rows,cols),zeros(T,rows,cols),M)
+function KaratsubaZeros(T,rows,cols,M)
+    K = KaratsubaMatrix(zeros(T,rows,cols),zeros(T,rows,cols),M)
+end
+
+function KaratsubaZeros(T,length,M)
+    K = KaratsubaVector(zeros(T,length),zeros(T,length),M)
 end
 
 import Base: +, -, *
 
-function +(A::KMat, B::KMat)
+function +(A::KaratsubaArray, B::KaratsubaArray)
     if occursin("Cu", string(typeof(A)))
-        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
     else
-        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
     end
     add!(K,A,B)
     K
 end
 
-function -(A::KMat, B::KMat)
+function -(A::KaratsubaArray, B::KaratsubaArray)
     if occursin("Cu", string(typeof(A)))
-        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
     else
-        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
     end
     sub!(K,A,B)
 end
 
-function *(a::Number, A::KMat)
+function *(a::Number, A::KaratsubaArray)
     if occursin("Cu", string(typeof(A)))
-        K = KMat(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(CUDA.zeros(eltype(A.l),size(A.l)...),CUDA.zeros(eltype(A.l),size(A.l)...),A.m)
     else
-        K = KMat(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
+        K = KaratsubaMatrix(zeros(eltype(A.l),size(A.l)...),zeros(eltype(A.l),size(A.l)...),A.m)
     end
     scalar_multiply!(K,A,a)
     K
 end
 
-function *(A::KMat, a::Number)
+function *(A::KaratsubaArray, a::Number)
     a * A
 end
 
-function *(A::KMat, B::KMat)
-    K = KMat(zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),A.m)
+function *(A::KaratsubaArray, B::KaratsubaArray)
+    K = KaratsubaMatrix(zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),zeros(eltype(A.l),size(A.l)[1],size(B.l)[2]),A.m)
     plan = KMatMulPlan{Matrix{eltype(A.l)}}(zeros(eltype(A.l),size(A.l)...),zeros(eltype(B.l),size(B.l)...))
     KMatMul!(K,A,B,plan)
     K
 end
 
-function add!(K::KMat, A::KMat, B::KMat)
+function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.m != B.m) || (A.m != K.m)
         error("Matrices must have the same modulus m")
     end
@@ -206,7 +230,7 @@ function add!(K::KMat, A::KMat, B::KMat)
     K
 end
 
-function sub!(C::KMat, A::KMat, B::KMat)
+function sub!(C::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.m != B.m) || (A.m != C.m)
         error("Matrices must have the same modulus m")
     end
@@ -220,7 +244,7 @@ function sub!(C::KMat, A::KMat, B::KMat)
     C
 end
 
-function scalar_multiply!(B::KMat, A::KMat, s::Number)
+function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
     if A.m != B.m
         error("Matrices must have the same modulus m")
     end
