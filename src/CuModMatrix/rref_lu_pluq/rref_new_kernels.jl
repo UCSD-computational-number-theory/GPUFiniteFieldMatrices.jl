@@ -384,15 +384,12 @@ function update_sub_matrix_row(d_A, p_row, p_col, P)
     for col_offset = 0:TILE_WIDTH
         col_idx = p_col + col_offset
         
-        # Make sure we don't go beyond the matrix width
         if col_idx <= size(d_A, 2)
-            # Get pivot row value and current cell value
             pivot_val = d_A[p_row, col_idx]
-            current_val = d_A[row_idx, col_idx]
-            
-            # Apply the row operation (equivalent to subtracting a multiple of pivot row)
-            d_A[row_idx, col_idx] = mod((current_val + multiplier * pivot_val), P)
+            d_A[row_idx, col_idx] = mod((d_A[row_idx, col_idx] + multiplier * pivot_val), P)
         end
+
+        CUDA.sync_threads()
     end
     
     # Zero out the pivot column value

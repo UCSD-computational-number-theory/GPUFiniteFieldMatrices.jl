@@ -44,54 +44,64 @@ function hensel_pseudoinverse(p, precision, A, T)
     return matrix(R, [R(x) for x in Array(T)])
 end
 
-function triangular_inverse_kernel(A::CuArray, A_inv::CuArray, N::Int, is_upper::Bool)
-    tid = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+function forward_sub_kernel(A::CuDeviceMatrix{T1}, A_inv::CuDeviceMatrix{T2}, N::Int) where {T1, T2}
+    j = blockIdx().x
+    t = threadIdx().x
     n = size(A, 1)
-    
-    if tid <= n
-        for j = 1:n
-            # Choose iteration order based on matrix type
-            if is_upper
-                iter_range = n:-1:1  # Bottom to top for upper triangular
-            else
-                iter_range = 1:n     # Top to bottom for lower triangular
-            end
-            
-            for i in iter_range
-                CUDA.sync_blocks()
-                
-                if tid == i
-                    sum = i == j ? 1 : 0
-                    
-                    if is_upper
-                        # For upper triangular, sum over elements to the right
-                        dep_range = i+1:n
-                    else
-                        # For lower triangular, sum over elements to the left
-                        dep_range = 1:i-1
-                    end
-                    
-                    for k in dep_range
-                        sum = (sum - (A[i, k] * A_inv[k, j]) % N) % N
-                        if sum < 0
-                            sum += N
-                        end
-                    end
-                    
-                    diag_inv = mod_inv(A[i, i], N)
-                    A_inv[i, j] = (sum * diag_inv) % N
-                end
-            end
+
+    row = t
+    while row <= n
+        CUDA.sync_threads()
+        
+        sum = (row == j) ? 1 : 0
+        for k = 1:row-1
+            sum = mod(sum - A[row, k] * A_inv[k, j], N)
         end
+        diag = A[row, row]
+        diag_inv = mod_inv(diag, N)
+        A_inv[row, j] = mod(sum * diag_inv, N)
+        
+        row += 32
     end
-    
-    return nothing
+
+    return
 end
 
-function backward_sub_gpu_type(A::CuModMatrix, is_upper::Bool)
-    d_A = GPUFiniteFieldMatrices.zeros(Int, rows(A), rows(A))
+function forward_sub_gpu_type(A::CuModMatrix)
+    padded_rows = size(A.data, 1)
+    d_A_inv = CuArray{Int}(undef, padded_rows, padded_rows)
 
-    @cuda threads=(TILE_WIDTH) blocks=(div(rows(A),TILE_WIDTH)+1) triangular_inverse_kernel(A.data, d_A, A.N, is_upper)
-    
-    return CuModMatrix(d_A, A.N, new_size=(rows(A), rows(A)))
+    @cuda threads=(TILE_WIDTH) blocks=(padded_rows-1) forward_sub_kernel(A.data, d_A_inv, A.N)
+    return CuModMatrix(d_A_inv, A.N, new_size=(rows(A), rows(A)))
+end
+
+function backward_sub_gpu_type(A::CuModMatrix)
+    padded_rows = size(A.data, 1)
+    d_A_inv = CuArray{Int}(undef, padded_rows, padded_rows)
+
+    @cuda threads=(TILE_WIDTH) blocks=(padded_rows-1) backward_sub_kernel(A.data, d_A_inv, A.N)
+    return CuModMatrix(d_A_inv, A.N, new_size=(rows(A), rows(A)))
+end
+
+function backward_sub_kernel(A::CuDeviceMatrix{T1}, A_inv::CuDeviceMatrix{T2}, N::Int) where {T1, T2}
+    j = blockIdx().x
+    t = threadIdx().x
+    n = size(A, 1)
+
+    row = t
+    while row <= n
+        CUDA.sync_threads()
+        
+        sum = (row == j) ? 1 : 0
+        for k = row:n
+            sum = mod(sum - A[row, k] * A_inv[k, j], N)
+        end
+        diag = A[row, row]
+        diag_inv = mod_inv(diag, N)
+        A_inv[row, j] = mod(sum * diag_inv, N)
+        
+        row += 32
+    end
+
+    return
 end

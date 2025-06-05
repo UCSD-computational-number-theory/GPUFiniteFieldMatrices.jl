@@ -435,7 +435,7 @@ end
 Checks if a matrix is invertible mod N.
 """
 function is_invertible(A::CuModMatrix)
-    P, L, U, Q = plup_gpu_type(A)
+    U, L, P, Q = plup_gpu_type(A)
     P = perm_array_to_matrix(P, A.N; new_size=(rows(A), rows(A)))
     Q = perm_array_to_matrix(Q, A.N; new_size=(cols(A), cols(A)))
 
@@ -447,7 +447,7 @@ function is_invertible(A::CuModMatrix)
     println(Array(Q))
     println(Array(P*L*U*Q))
     for diag_elem in diag(Array(U))
-        if gcd(diag_elem, A.N) > 1
+        if diag_elem == 0
             return false
         end
     end
@@ -480,17 +480,30 @@ function inverse(A::CuModMatrix)
     U_diag = diag(Array(U))
     rank = count(U_diag .!= 0)
 
-    if r == 0
+    if rank == 0
         return zeros(eltype(A.data), rows(A), cols(A))
     end
 
-    L_new = @view L[:, 1:r]
-    U_new = @view U[1:r, :]
+    L_new = @view L[:, 1:rank]
+    U_new = @view U[1:rank, :]
 
-    U_inv = backward_sub_gpu_type(U_new, true)
-    L_inv = backward_sub_gpu_type(L_new, false)
+    U_inv = backward_sub_gpu_type(U)
+    L_inv = forward_sub_gpu_type(L)
 
-    A_inv = Q * U_inv * L_inv * P
+    println("L_inv")
+    println(Array(L_inv))   
+    println("U_inv")
+    println(Array(U_inv))
+
+    Q_mat = perm_array_to_matrix(Q, A.N; new_size=(cols(A), cols(A)))
+    P_mat = perm_array_to_matrix(P, A.N; new_size=(rows(A), rows(A)))
+
+    println("Q_mat")
+    println(Array(Q_mat))
+    println("P_mat")
+    println(Array(P_mat))
+
+    A_inv = Q_mat * U_inv * L_inv * P_mat
 
     return A_inv
 end

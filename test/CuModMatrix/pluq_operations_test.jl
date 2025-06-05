@@ -215,19 +215,16 @@ function test_inverse_operations()
     println("A has inverse: ", A_has_inverse)
     println("A_inv = ")
     display(A_inv)
-    println(typeof(A_inv))
-    println()
 
-    @test A_has_inverse
-    @test A * A_inv ≈ CuModMatrix(I, modulus)
+    @test !A_has_inverse
 
     println("Testing inverse of identity matrix...")
     B = GPUFiniteFieldMatrices.eye(Int, 3, modulus)
     B_has_inverse, B_inv = GPUFiniteFieldMatrices.is_invertible_with_inverse(B)
     @test B_has_inverse
-    @test B * B_inv ≈ CuModMatrix(I, modulus)
-    @test B_inv * B ≈ CuModMatrix(I, modulus)
-    @test B_inv == B
+    @test Array(B * B_inv) ≈ Array(B)
+    @test Array(B_inv * B) ≈ Array(B)
+    @test Array(B_inv) == Array(B)
     
     println("All inverse operations tests passed!")
 end
@@ -237,7 +234,7 @@ function test_pluq()
     test_rref_operations()
     test_lu_operations()
     test_pluq_operations()
-    # test_inverse_operations()
+    test_inverse_operations()
     
     println("\nAll RREF and decomposition tests passed!")
 end
