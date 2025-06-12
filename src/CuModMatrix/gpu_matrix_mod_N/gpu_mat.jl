@@ -822,6 +822,11 @@ function mod_elements!(A::CuModArray, mod_N::Integer=-1)
     return A
 end
 
+function trunc_elements!(A::CuModArray)
+    @. A.data = trunc(A.data)
+    return A
+end
+
 # Utility functions to change modulus
 """
     change_modulus(A, new_N)

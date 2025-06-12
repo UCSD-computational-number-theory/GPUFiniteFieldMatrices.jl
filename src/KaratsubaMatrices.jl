@@ -157,10 +157,10 @@ function MatToKMat(A::AbstractArray)
 end
 
 function MatToKMat(T::Type,A::AbstractArray,M::Integer)
-    MatToKMat(T,A,M,M,M)
+    KaratsubaMatrix(T,A,M,M,M)
 end
 
-function MatToKMat(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
+function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
     if occursin("CuMod", string(typeof(A)))
         K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,M),GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,M),N1,N2,M)
     elseif occursin("Cu", string(typeof(A)))
@@ -169,8 +169,16 @@ function MatToKMat(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
     else
         K = KaratsubaMatrix(zeros(T,size(A)...),zeros(T,size(A)...),N1,N2,M)
     end
+    #=
     K.data2 .= mod.(trunc.(A./M),N2)
     K.data1 .= mod.(A - Int(K.M)*K.data2,N1)
+    =#
+    LinearAlgebra.mul!(K.data2,A,1/M)
+    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,N2)
+    LinearAlgebra.mul!(K.data1,K.data2,Int(K.M))
+    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,M)
+    GPUFiniteFieldMatrices.mod_elements!(K.data1,N1)
     K
 end
 
@@ -250,23 +258,50 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
         error("Matrix dimensions must match")
     end
 
+    #=
     K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
     K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
     K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
+    =#
+    GPUFiniteFieldMatrices.add!(K.data2,A.data1,B.data1)
+    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
+    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+    LinearAlgebra.mul!(K.data1,K.data1,A.M,A.M^2)
+    GPUFiniteFieldMatrices.sub!(K.data1,B.data1,K.data1)
+    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.data1)
+    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,A.data2)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     K
 end
 
-function sub!(C::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
-    if (A.M != B.M) || (A.M != C.M)
+function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
+    if (A.M != B.M) || (A.M != K.M)
         error("Matrices must have the same modulus m")
     end
-    if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(C.data1)))
+    if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
         error("Matrix dimensions must match")
     end
 
+    #=
     C.data2 .= mod.(trunc.((A.data1-B.data1)./A.M),A.N2)
     C.data1 .= mod.(A.data1 - B.data1 - A.M*C.data2,A.N1)
     C.data2 .= mod.(C.data2 + A.data2 - B.data2 - (A.data1.<B.data1),A.N2)
+    =#
+    GPUFiniteFieldMatrices.sub!(K.data2,A.data1,B.data1)
+    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
+    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+    LinearAlgebra.mul!(K.data1,K.data1,A.M,A.M^2)
+    GPUFiniteFieldMatrices.sub!(K.data1,B.data1,K.data1)
+    GPUFiniteFieldMatrices.sub!(K.data1,A.data1,K.data1)
+    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,A.data2)
+    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,B.data2)
+    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1.<B.data1)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     C
 end
 

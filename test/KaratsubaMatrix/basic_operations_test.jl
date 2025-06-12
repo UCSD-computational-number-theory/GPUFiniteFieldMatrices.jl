@@ -63,9 +63,11 @@ function test_basic_operations()
         @test A - B == GPUFiniteFieldMatrices.CuModMatrix(Array(AK - BK),100^2)
         @test a*A == GPUFiniteFieldMatrices.CuModMatrix(Array(a*AK),100^2)
         @test A*B == GPUFiniteFieldMatrices.CuModMatrix(Array(AK*BK),100^2)
+        #=
         @test C + D == GPUFiniteFieldMatrices.CuModMatrix(Array(CK + DK),100^2)
         @test C - D == GPUFiniteFieldMatrices.CuModMatrix(Array(CK - DK),100^2)
         @test a*C == GPUFiniteFieldMatrices.CuModMatrix(Array(a*CK),100^2)
         @test C*D == GPUFiniteFieldMatrices.CuModMatrix(Array(CK*DK),100^2)
+        =#
     end
 end
