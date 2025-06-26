@@ -73,11 +73,23 @@ function KaratsubaVector(A::AbstractMatrix{T},B::AbstractMatrix{T},M::Integer) w
     KaratsubaArray{T,1}(A,B,M,M,M)
 end
 
-struct KMatMulPlan{AbstractArray}
-    temp1::AbstractArray
-    temp2::AbstractArray
+struct KMatMulPlan{T,D}
+    temp1::AbstractArray{T,D}
+    temp2::AbstractArray{T,D}
     temp1mod::Integer
     temp2mod::Integer
+
+    function KMatMulPlan{T,D}(A::AbstractArray{T,D},B::AbstractArray{T,D},N1::Integer,N2::Integer) where {T,D}
+        new{T,D}(A,B,N1,N2)
+    end
+end
+
+function zerosplan(T::Type,rows::Integer,cols::Integer,N1::Integer,N2::Integer,use_gpu=false)
+    if use_gpu == true
+        return KMatMulPlan{T,2}(GPUFiniteFieldMatrices.zeros(T,rows,cols,N1),GPUFiniteFieldMatrices.zeros(T,rows,cols,N2),N1,N2)
+    else
+        return KMatMulPlan{T,2}(zeros(T,rows,cols),zeros(T,rows,cols),N1,N2)
+    end
 end
 
 function find_max_ops(type, N)
@@ -109,7 +121,7 @@ function find_max_ops(type, N)
     
 end
 
-function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan::KMatMulPlan)
+function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan::KaratsubaArray)
     if (A.M != B.M) || (A.M != C.M)
         error("Matrices must have the same modulus m")
     end
@@ -126,10 +138,10 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan::KM
         error("Modulus is larger than max_ops")
     end
 
-    plan.temp1 .= A.data1 + A.data2
-    plan.temp2 .= B.data1 + B.data2
+    plan.data1 .= A.data1 + A.data2
+    plan.data2 .= B.data1 + B.data2
     C.data1 .= A.data1*B.data1
-    C.data2 .= plan.temp1*plan.temp2
+    C.data2 .= plan.data1*plan.data2
     C.data2 .= C.data2 - C.data1
     C.data2 .= C.data2 - A.data2*B.data2
 end
@@ -212,12 +224,15 @@ end
 function -(A::KaratsubaArray, B::KaratsubaArray)
     if occursin("CuMod", string(typeof(A.data1)))
         K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.data1.N),GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.data1.N),A.N1,A.N2,A.M)
+        temp = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.data1.N),GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.data1.N),A.N1,A.N2,A.M)
     elseif occursin("Cu", string(typeof(A.data1)))
         K = KaratsubaMatrix(CUDA.zeros(eltype(A.data1),size(A.data1)...),CUDA.zeros(eltype(A.data1),size(A.data1)...),A.N1,A.N2,A.M)
+        temp = KaratsubaMatrix(CUDA.zeros(eltype(A.data1),size(A.data1)...),CUDA.zeros(eltype(A.data1),size(A.data1)...),A.N1,A.N2,A.M)
     else
         K = KaratsubaMatrix(zeros(eltype(A.data1),size(A.data1)...),zeros(eltype(A.data1),size(A.data1)...),A.N1,A.N2,A.M)
+        temp = KaratsubaMatrix(zeros(eltype(A.data1),size(A.data1)...),zeros(eltype(A.data1),size(A.data1)...),A.N1,A.N2,A.M)
     end
-    sub!(K,A,B)
+    sub!(K,A,B,temp)
 end
 
 function *(a::Number, A::KaratsubaArray)
@@ -239,7 +254,8 @@ end
 function *(A::KaratsubaArray, B::KaratsubaArray)
     if occursin("CuMod", string(typeof(A.data1)))
         K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)[1],size(B.data1)[2],A.M),GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)[1],size(B.data1)[2],A.M),A.N1,A.N2,A.M)
-        plan = KMatMulPlan{typeof(A.data1)}(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.M),GPUFiniteFieldMatrices.zeros(eltype(B.data1),size(B.data1)...,A.M),A.N1,A.N2)
+        plan = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)[1],size(B.data1)[2],A.M),GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)[1],size(B.data1)[2],A.M),A.N1,A.N2,A.M)
+        #plan = KMatMulPlan(GPUFiniteFieldMatrices.zeros(eltype(A.data1),size(A.data1)...,A.M),GPUFiniteFieldMatrices.zeros(eltype(B.data1),size(B.data1)...,A.M),A.N1,A.N2)
     elseif occursin("Cu", string(typeof(A.data1)))
         K = KaratsubaMatrix(CUDA.zeros(eltype(A.data1),size(A.data1)...),CUDA.zeros(eltype(A.data1),size(A.data1)...),A.N1,A.N2,A.M)
     else
@@ -257,7 +273,6 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
         error("Matrix dimensions must match")
     end
-
     #=
     K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
     K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
@@ -267,17 +282,18 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
-    LinearAlgebra.mul!(K.data1,K.data1,A.M,A.M^2)
-    GPUFiniteFieldMatrices.sub!(K.data1,B.data1,K.data1)
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.data1)
+    LinearAlgebra.mul!(K.data1,K.data2,A.M,A.M^2)
+    GPUFiniteFieldMatrices.sub!(K.data1,B.data1,K.data1,B.M^2)
+    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.data1,A.M^2)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
     GPUFiniteFieldMatrices.add!(K.data2,K.data2,A.data2)
     GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+
     K
 end
 
-function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
+function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray,temp::KaratsubaArray)
     if (A.M != B.M) || (A.M != K.M)
         error("Matrices must have the same modulus m")
     end
@@ -289,7 +305,7 @@ function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     C.data2 .= mod.(trunc.((A.data1-B.data1)./A.M),A.N2)
     C.data1 .= mod.(A.data1 - B.data1 - A.M*C.data2,A.N1)
     C.data2 .= mod.(C.data2 + A.data2 - B.data2 - (A.data1.<B.data1),A.N2)
-    =#
+    
     GPUFiniteFieldMatrices.sub!(K.data2,A.data1,B.data1)
     LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
@@ -302,7 +318,10 @@ function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     GPUFiniteFieldMatrices.sub!(K.data2,K.data2,B.data2)
     GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1.<B.data1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
-    C
+    =#
+    negate!(temp,B)
+    add!(K,A,temp)
+    K
 end
 
 function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
@@ -316,4 +335,24 @@ function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
     B.data2 .= mod.(trunc.((s*A.data1)/A.M),A.N2)
     B.data1 .= mod.(s*A.data1 - B.M*B.data2,A.N1)
     B.data2 .= mod.(B.data2 + s*A.data2,A.N2)
+end
+
+function negate!(K::KaratsubaArray,A::KaratsubaArray)
+    #=
+    K.data2 .= trunc.((A.M .- A.data1)/A.M)
+    K.data1 .= mod.(A.M - A.data1 - A.M*K.data2,A.N1)
+    K.data2 .= mod.(mod.(K.data2 + A.M - A.data2 - 1,A.M),A.N2)
+    =#
+    GPUFiniteFieldMatrices.negate!(K.data2,A.data1,A.M)
+    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
+    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+    LinearAlgebra.mul!(K.data1,K.data2,A.M,A.M^2)
+    GPUFiniteFieldMatrices.add!(K.data1,K.data1,A.data1,A.M^2)
+    GPUFiniteFieldMatrices.negate!(K.data1,K.data1,A.M)
+    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+    GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.M,A.M^2)
+    GPUFiniteFieldMatrices.scalar_sub!(K.data2,K.data2,1,A.M^2)
+    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data2,A.M)
+    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+    K
 end
