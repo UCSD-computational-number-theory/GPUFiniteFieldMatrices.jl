@@ -224,6 +224,8 @@ Base.length(A::CuModArray{T,1}) where T = size(A)[1]
 Base.length(A::CuModArray{T,2}) where T = rows(A)*cols(A)
 Base.length(A::CuModArray) = prod(size(A))
 
+Base.eltype(A::CuModArray) = eltype(A.data)
+
 # User needs to do CUDA.@allowscalar to use these
 #
 # Also, 3D indexing is currently not supported because we have no
@@ -830,6 +832,11 @@ function mod_elements!(A::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
     
     @. A.data = mod(A.data, N)
+    return A
+end
+
+function trunc_elements!(A::CuModArray)
+    @. A.data = trunc(A.data)
     return A
 end
 
