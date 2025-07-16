@@ -65,11 +65,11 @@ function KaratsubaMatrix(A::AbstractMatrix{T},B::AbstractMatrix{T},N1::Integer,N
     KaratsubaArray{T,2}(A,B,N1,N2,M)
 end
 
-function KaratsubaVector(A::AbstractMatrix{T},B::AbstractMatrix{T}) where T
+function KaratsubaVector(A::AbstractVector{T},B::AbstractVector{T}) where T
     KaratsubaArray{T,1}(A,B)
 end
 
-function KaratsubaVector(A::AbstractMatrix{T},B::AbstractMatrix{T},M::Integer) where T
+function KaratsubaVector(A::AbstractVector{T},B::AbstractVector{T},M::Integer) where T
     KaratsubaArray{T,1}(A,B,M,M,M)
 end
 
