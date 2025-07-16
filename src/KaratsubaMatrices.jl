@@ -131,19 +131,29 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan::Ka
     if (size(A.data1)[1] != size(C.data1)[1]) || (size(B.data1)[2] != size(C.data1)[2])
         error("Output matrix has wrong dimensions")
     end
-
+    #=
     max_ops = find_max_ops(eltype(A.data1),max(size(A.data1)...,size(B.data1)...))
 
     if A.M > max_ops
         error("Modulus is larger than max_ops")
     end
-
+    =#
+    #=
     plan.data1 .= A.data1 + A.data2
     plan.data2 .= B.data1 + B.data2
     C.data1 .= A.data1*B.data1
     C.data2 .= plan.data1*plan.data2
     C.data2 .= C.data2 - C.data1
     C.data2 .= C.data2 - A.data2*B.data2
+    =#
+    GPUFiniteFieldMatrices.add!(plan.data1,A.data1,A.data2,A.M^2)
+    GPUFiniteFieldMatrices.add!(plan.data2,B.data1,B.data2,B.M^2)
+    LinearAlgebra.mul!(C.data1,A.data1,B.data1)
+    LinearAlgebra.mul!(C.data2,plan.data1,plan.data2)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.data1,B.M^2)
+    LinearAlgebra.mul!(plan.data2,A.data2,B.data2)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,plan.data2,B.M^2)
+    C
 end
 
 #Converts KMat to Mat
@@ -189,6 +199,8 @@ function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Int
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,N2)
     LinearAlgebra.mul!(K.data1,K.data2,Int(K.M))
+    display(K.data1)
+    display(A)
     GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,M)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,N1)
     K
@@ -199,12 +211,22 @@ function MatToKMat(T::Type,A::AbstractArray)
     MatToKMat(T,A,M)
 end
 
-function KaratsubaZeros(T,rows,cols,M)
-    K = KaratsubaMatrix(zeros(T,rows,cols),zeros(T,rows,cols),M,M,M)
+function KaratsubaZeros(T,rows,cols,N1,N2,M,use_gpu)
+    if use_gpu == true
+        K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(T,rows,cols,M),GPUFiniteFieldMatrices.zeros(T,rows,cols,M),N1,N2,M)
+    else
+        K = KaratsubaMatrix(zeros(T,rows,cols),zeros(T,rows,cols),N1,N2,M)
+    end
+    K
 end
 
-function KaratsubaZeros(T,length,M)
-    K = KaratsubaVector(zeros(T,length),zeros(T,length),M,M,M)
+function KaratsubaZeros(T,length,N1,N2,M,use_gpu)
+    if use_gpu == true
+        K = KaratsubaVector(GPUFiniteFieldMatrices.zeros(T,length,M),GPUFiniteFieldMatrices.zeros(T,length,M),N1,N2,M)
+    else
+        K = KaratsubaVector(zeros(T,length),zeros(T,length),N1,N2,M)
+    end
+    K
 end
 
 import Base: +, -, *
@@ -278,7 +300,8 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
     K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
     =#
-    GPUFiniteFieldMatrices.add!(K.data2,A.data1,B.data1)
+    
+    GPUFiniteFieldMatrices.add!(K.data2,A.data1,B.data1,2*A.M)
     LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
@@ -289,6 +312,12 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     GPUFiniteFieldMatrices.add!(K.data2,K.data2,A.data2)
     GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+    #=
+    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
+    GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
+    GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
+    =#
 
     K
 end
