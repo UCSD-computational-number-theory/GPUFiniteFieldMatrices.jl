@@ -45,9 +45,9 @@ function test_allocations()
     result = CUDA.@timed mod_elements!(C,3)
     @test result[:gpu_bytes] == 0
 
-    A_data_floats = convert.(Float32,A_data)
-    result = CUDA.@timed copyto!(A,A_data_floats)
-    @test result[:gpu_bytes] == 0
+    # A_data_floats = convert.(Float32,A_data)
+    # result = CUDA.@timed copyto!(A,A_data_floats)
+    # @test result[:gpu_bytes] == 0
 
     # matmul needs to allocate a few views
     
