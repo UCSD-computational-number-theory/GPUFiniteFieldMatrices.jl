@@ -171,7 +171,7 @@ function plup_gpu(A, P)
         #     println("d_L: ", d_L)
         # end
 
-        normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p, P)
+        normalize_lu_broadcast(d_A, d_L, A_rows, row, col, p_inv, p, P)
         # if DEBUG
         #     println("Normalize")
         #     println("d_L: ", d_L)
@@ -195,11 +195,16 @@ function plup_gpu(A, P)
     return (Array(d_A)[1:A_rows,1:A_cols], Array(d_L)[1:A_rows,1:A_rows], Perm_rows, Perm_cols)
 end
 
-function find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx)
+function find_zero_col_and_swap(d_A, A_rows, row, col, Perm_cols, Perm_col_idx; perm_stack=false)
     max_val = @view d_A[row:A_rows,col]
+    # If we have a column of all zeroes, swap it with the last available column.
     if maximum(max_val) == 0
         d_A[:,col], d_A[:,Perm_col_idx] = d_A[:,Perm_col_idx], d_A[:,col]
-        Perm_cols[col], Perm_cols[Perm_col_idx] = Perm_cols[Perm_col_idx], Perm_cols[col]
+        if perm_stack
+            push!(Perm_cols, (col, Perm_col_idx))
+        else
+            Perm_cols[col], Perm_cols[Perm_col_idx] = Perm_cols[Perm_col_idx], Perm_cols[col]
+        end
         return true
     end
     return false
@@ -293,11 +298,19 @@ function swap_and_mod(d_A, k, p_row, inv, P)
     return
 end
 
-function swap_and_mod_lu(d_A, d_L, k, p_row, p_inv, N, Perm)
+function swap_and_mod_lu(
+    d_A, d_L, k, p_row, p_inv, N, Perm; 
+    perm_stack=false
+)
 
     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
     d_L[k,:], d_L[p_row,:] = d_L[p_row,:], d_L[k,:]
-    Perm[k], Perm[p_row] = Perm[p_row], Perm[k]
+
+    if perm_stack
+        push!(Perm, (k, p_row))
+    else
+        Perm[k], Perm[p_row] = Perm[p_row], Perm[k]
+    end
 
     @. d_A[p_row,:] = mod((d_A[p_row,:] * p_inv), N)
     return
@@ -345,16 +358,22 @@ end
 
 Update the L matrix values during LU decomposition.
 """
-# function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p, P)
+
 #     d_L[row:end,L_col] .= p
 #     d_L[row+1:end,L_col] = d_A[row+1:A_rows,L_col]
 #     d_L[row+1:end,L_col] = mod_inv.(Array(d_A[row+1:A_rows,L_col]), P)
-#     return
-# end
-function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, p, N)
-    d_L[row:end, L_col] .= p
 
+function normalize_lu_broadcast(d_A, d_L, A_rows, row, L_col, p_inv, p, N)
+    # Set the diagonal element in L to the pivot value
+    d_L[row:end, L_col] .= p
+    
+    # Copy the column values from d_A to d_L for the lower part
     @. d_L[row+1:end, L_col] = d_A[row+1:end, L_col]
+    
+    # Normalize the pivot row in d_A
+    # @. d_A[row, :] = mod(d_A[row, :] * p_inv, N)
+    
+    return
 end
 
 function update_sub_matrix_row(d_A, p_row, p_col, P)
@@ -377,13 +396,12 @@ function update_sub_matrix_row(d_A, p_row, p_col, P)
         return
     end
     
-    # Calculate the multiplier (P - pivot_col_val for subtraction in modular arithmetic)
+    # Calculate the multiplier for elimination
+    # For subtraction in modular arithmetic: a - b ≡ a + (P - b) (mod P)
     multiplier = P - pivot_col_val
     
-    # Process all columns from pivot column to the end- 
-    for col_offset = 0:TILE_WIDTH
-        col_idx = p_col + col_offset
-        
+    # Process all columns from pivot column to the end of the matrix
+    for col_idx = p_col:size(d_A, 2)
         if col_idx <= size(d_A, 2)
             pivot_val = d_A[p_row, col_idx]
             d_A[row_idx, col_idx] = mod((d_A[row_idx, col_idx] + multiplier * pivot_val), P)

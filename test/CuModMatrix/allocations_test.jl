@@ -12,8 +12,8 @@ function test_allocations()
     B = CuModMatrix(B_data,11)
     x = CuModVector(x_data,11)
 
-    C = GPUFiniteFieldMatrices.zeros(Float32,n,n,11)
-    z = GPUFiniteFieldMatrices.zeros(Float32,n,11)
+    C = GPUFiniteFieldMatrices.zeros(Float64,n,n,11)
+    z = GPUFiniteFieldMatrices.zeros(Float64,n,11)
 
     #Note: BenchmarkTools doesn't seem to support tracking gpu allocations
     #as of May 2025
@@ -48,10 +48,10 @@ function test_allocations()
     # matmul needs to allocate a few views
     
     result = CUDA.@timed mul!(C,A,B)
-    @test result[:gpu_bytes] < 10
+    @test result[:gpu_bytes] < 20
 
     result = CUDA.@timed mul!(z,A,x)
-    @test result[:gpu_bytes] < 10
+    @test result[:gpu_bytes] < 20
    
     CUDA.@sync println("Done testing allocations.")
 end

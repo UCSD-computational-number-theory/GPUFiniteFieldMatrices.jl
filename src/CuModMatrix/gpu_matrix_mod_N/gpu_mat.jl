@@ -1,6 +1,6 @@
 
 const TILE_WIDTH = 32
-const DEFAULT_TYPE = Float32
+const DEFAULT_TYPE = Float64
 
 struct CuModArraySizeMismatchException <: Exception
     message::String
@@ -22,10 +22,19 @@ struct CuModMatrixModulusNotPrimeException <: Exception
     message::String
 end
 
+struct InverseOverflowError <: Exception
+    message::String
+end
+
+struct InverseNotDefinedException <: Exception
+    message::String
+end
+
 function mod_kernel!(data, N)
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     if i <= length(data)
-        data[i] = data[i] % N
+        data[i] = ((data[i] % N) + N) % N
+        
     end
     return nothing
 end
@@ -64,6 +73,7 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         
         # Initialize the padded areas to zero
         data = CUDA.fill(zero(T),padded_size...) 
+        # data = CUDA.CuArray{T}(I, padded_size...)
         
         A_inds = CartesianIndices(A)
         rangesize = map(x -> 1:x,size(A))
@@ -180,8 +190,7 @@ end
 
 Returns the maximum number of operations before a N is necessary given a datatype and N N.
 """
-function find_max_ops(type, N)
-
+function get_bits(type)
     if occursin("Float", string(type))
         bits_dict = Dict("64" => 51, "32" => 22, "16" => 9)
         bits_match = match(r"\d+", string(type))
@@ -200,13 +209,17 @@ function find_max_ops(type, N)
         error("Input type is not recognized.")
     end
 
+    return bits
+end
+
+function find_max_ops(type, N)
+    bits = get_bits(type)
+
     if 64 ≤ bits
         floor(BigInt, (BigInt(2)^bits - 1) / N^2) - 1
     else
         floor(Int, (2^bits - 1) / N^2) - 1    
-    end
-
-    
+    end    
 end
 
 Base.size(A::CuModArray) = A.size
@@ -409,6 +422,25 @@ function Base.:^(A::CuModMatrix, n::Integer)
     end
 end
 
+function Base.transpose(A::CuModMatrix)
+    return CuModMatrix(transpose(A.data), A.N; new_size=size(A))
+end
+
+function _setup_PLUQ(A::CuModMatrix; perm_stack::Bool=true)
+    U, L, P, Q = pluq_gpu_type(A; perm_stack=true)
+    return U, L, P, Q
+end
+
+function _is_invertible(U::CuModMatrix)
+    for diag_elem in diag(Array(U))
+        if diag_elem == 0
+            return false
+        end
+    end
+
+    return true
+end
+
 """
     is_invertible_with_inverse(A::CuModMatrix)
 
@@ -416,12 +448,112 @@ Checks if a matrix is invertible. If not, returns
 false and nothing. If it is, returns true and the
 inverse matrix.
 """
-function is_invertible_with_inverse(A::CuModMatrix)
-    if !is_invertible(A)
+function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, time::Bool=false)
+
+    if time
+        start = time()
+    else
+        start = nothing
+    end
+
+    U, L, P, Q = _setup_PLUQ(A)
+
+    if time
+        println("Time to setup PLUQ: ", time() - start)
+    end
+
+    if !_is_invertible(U)
         return false, nothing
     end
 
-    return true, inverse(A)
+    if time 
+        println("Time to check if invertible: ", time() - start)
+    end
+
+    U_inv = upper_triangular_inverse(U; debug=debug)
+
+    if time
+        println("Time to compute U_inv: ", time() - start)
+    end
+
+    L_inv = lower_triangular_inverse(L; debug=debug)
+
+    if time
+        println("Time to compute L_inv: ", time() - start)
+    end
+
+    if debug
+        println("size U_inv: ", size(U_inv))
+        println("size U_inv.data: ", size(U_inv.data))
+        println("size L_inv: ", size(L_inv))
+        println("size L_inv.data: ", size(L_inv.data))
+        println("size A: ", size(A))
+        println("size A.data: ", size(A.data))
+    end
+
+    function _compute_A_inv(U_inv, L_inv, P, Q)
+        apply_col_inv_perm!(P, L_inv)
+        apply_row_inv_perm!(Q, U_inv)
+        return U_inv * L_inv
+    end
+
+    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
+
+    if time
+        println("Time to compute A_inv: ", time() - start)
+    end
+
+    if debug
+        println("L")
+        display(L)
+        println("U")
+        display(U)
+        println("L_inv")
+        display(L_inv)
+        println("U_inv")
+        display(U_inv)
+        println("Q_mat")
+        display(Q)
+        println("P_mat")
+        display(P)
+        println("A_inv")
+        display(A_inv)
+        println("A_inv * A")
+        display(A_inv * A)
+    end
+
+    return true, A_inv
+end
+
+function inverse_permutation(P::Vector{Int})
+    P_inv = Array{Int}(undef, length(P))
+    for i in 1:length(P)
+        P_inv[P[i]] = i
+    end
+    return P_inv
+end
+
+function inverse_permutation(P::CuDeviceVector{Int, 1})
+    # TODO: Pad the perm array
+    P_inv = CuDeviceVector{Int, 1}(undef, length(P))
+
+    @cuda threads=TILE_WIDTH blocks=div(length(P), TILE_WIDTH) _inverse_permutation_kernel!(P_inv, P)
+
+    return P_inv
+end
+
+function _inverse_permutation_kernel!(P_inv::CuDeviceVector{Int, 1}, P::CuDeviceVector{Int, 1})
+    # TODO: Pad the perm array
+    tid = threadIdx().x
+    bid = blockIdx().x
+    row = (bid - 1) * TILE_WIDTH + tid
+    n = length(P)
+
+    if row <= n
+        P_inv[P[row]] = row
+    end
+
+    return
 end
 
 """
@@ -430,24 +562,10 @@ end
 Checks if a matrix is invertible mod N.
 """
 function is_invertible(A::CuModMatrix)
-    U, L, P, Q = plup_gpu_type(A)
-    P = perm_array_to_matrix(P, A.N; new_size=(rows(A), rows(A)))
-    Q = perm_array_to_matrix(Q, A.N; new_size=(cols(A), cols(A)))
 
-    println("The GCD Matrix")
-    println(Array(P*U))
-    println(Array(U))
-    println(Array(L))
-    println(Array(P))
-    println(Array(Q))
-    println(Array(P*L*U*Q))
-    for diag_elem in diag(Array(U))
-        if diag_elem == 0
-            return false
-        end
-    end
+    U, L, P, Q = _setup_PLUQ(A)
 
-    return true
+    return _is_invertible(U)
 end
 
 function gcd(a,b)
@@ -464,41 +582,25 @@ end
 Computes the inverse of a matrix mod N.
 """
 function inverse(A::CuModMatrix)
-    if !is_invertible(A)
+
+    U, L, P, Q = _setup_PLUQ(A)
+
+    if !_is_invertible(U)
         throw(MatrixNotInvertibleException(
             "Matrix is not invertible mod $(A.N)"
         ))
     end
-    
-    U, L, P, Q = plup_gpu_type(A)
 
-    U_diag = diag(Array(U))
-    rank = count(U_diag .!= 0)
+    U_inv = upper_triangular_inverse(U)
+    L_inv = lower_triangular_inverse(L)
 
-    if rank == 0
-        return zeros(eltype(A.data), rows(A), cols(A))
+    function _compute_A_inv(U_inv, L_inv, P, Q)
+        apply_col_inv_perm!(P, L_inv)
+        apply_row_inv_perm!(Q, U_inv)
+        return U_inv * L_inv
     end
 
-    L_new = @view L[:, 1:rank]
-    U_new = @view U[1:rank, :]
-
-    U_inv = backward_sub_gpu_type(U)
-    L_inv = forward_sub_gpu_type(L)
-
-    println("L_inv")
-    println(Array(L_inv))   
-    println("U_inv")
-    println(Array(U_inv))
-
-    Q_mat = perm_array_to_matrix(Q, A.N; new_size=(cols(A), cols(A)))
-    P_mat = perm_array_to_matrix(P, A.N; new_size=(rows(A), rows(A)))
-
-    println("Q_mat")
-    println(Array(Q_mat))
-    println("P_mat")
-    println(Array(P_mat))
-
-    A_inv = Q_mat * U_inv * L_inv * P_mat
+    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
 
     return A_inv
 end
@@ -529,10 +631,10 @@ end
 
 Creates a matrix of zeros in the mod N ring.
 """
-function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
+function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer; new_size::Tuple{Int,Int}=(rows,cols)) where T
     padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
     padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
-    CuModMatrix(CUDA.zeros(T, padded_rows, padded_cols), N, new_size=(rows,cols))
+    CuModMatrix(CUDA.zeros(T, padded_rows, padded_cols), N, new_size=new_size)
 end
 
 """

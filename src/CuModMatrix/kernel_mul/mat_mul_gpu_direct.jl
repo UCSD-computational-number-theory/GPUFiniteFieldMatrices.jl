@@ -9,10 +9,10 @@ function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REG
     N = mod_N > 0 ? mod_N : A.N
     
     if cols(A) != rows(B)
-        throw(MatrixSizeMismatchException(
+        throw(CuModArraySizeMismatchException(
             "Matrix dimensions do not match.
-            A has $rows(A) rows and $cols(A) cols, 
-            B has $rows(B) rows and $cols(B) cols."
+            A has $(rows(A)) rows and $(cols(A)) cols, 
+            B has $(rows(B)) rows and $(cols(B)) cols."
         ))
     end
     

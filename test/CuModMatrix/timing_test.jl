@@ -12,8 +12,8 @@ function test_timings()
     B = CuModMatrix(B_data,11)
     x = CuModVector(x_data,11)
 
-    C = GPUFiniteFieldMatrices.zeros(Float32,n,n,11)
-    z = GPUFiniteFieldMatrices.zeros(Float32,n,11)
+    C = GPUFiniteFieldMatrices.zeros(Float64,n,n,11)
+    z = GPUFiniteFieldMatrices.zeros(Float64,n,11)
 
     #These are mostly meant to be sanity checks to detect bugs,
     #rather than minor performance regressions
@@ -25,7 +25,7 @@ function test_timings()
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
     result = @btimed CUDA.@sync mul!($C,$A,$B)
-    @test result[:time] < 1 # on a 3070, I can get less than 0.2
+    @test result[:time] < 2 # on a 3070, I can get less than 0.2
 
     result = @btimed CUDA.@sync mul!($z,$A,$x)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
