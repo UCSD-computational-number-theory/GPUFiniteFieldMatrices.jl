@@ -76,19 +76,24 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         # data = CUDA.CuArray{T}(I, padded_size...)
         
         A_inds = CartesianIndices(A)
-        rangesize = map(x -> 1:x,size(A))
-        data_inds = CartesianIndices(rangesize)
+        #rangesize = map(x -> 1:x,size(A))
+        #data_inds = CartesianIndices(rangesize)
 
         # The desired behavior is for this to error if the conversion is
         # impossible
-        converted = convert.(T,A)
+        if !(S <: T)
+            converted = convert.(T,A)
+        else
+            converted = A
+        end
 
         #TODO: We would like to use an in-place version:
         #`copyto!(data, data_inds, converted, A_inds)`
         #but this doesn't seem to be implemented in CUDA.jl.
         #For now, we can deal with a little extra (cpu) allocation 
         #in creation of matrices.
-        data[data_inds] = converted[A_inds]
+        #dataview = @view data[data_inds]
+        copyto!(data, A_inds, converted, A_inds)
         
         if mod
             threads = 32
@@ -873,6 +878,30 @@ function Base.copy!(B::CuModArray, A::CuModArray)
     CUDA.copy!(B.data, A.data)
     return B
 end
+
+"""
+    copyto!(dest::CuModArray, src::AbstractArray)
+
+Copy the data from dest to src. This is useful for sending
+data to the gpu.
+
+Does not mod.
+"""
+function Base.copyto!(dest::CuModArray{T}, src::AbstractArray{T}) where T
+    if size(dest) != size(src)
+        throw(CuModArraySizeMismatchException(
+            "Matrix dimensions must match"
+        ))
+    end
+
+    #rangesize = map(x -> 1:x,size(dest))
+    #data_inds = CartesianIndices(rangesize)
+    inds = CartesianIndices(src)
+
+    #dataview = @view dest[data_inds]
+    copyto!(dest.data,inds,src,inds)
+end
+
 
 """
     fill!(A::CuModArray{T,D}, s::T) where {T,D}

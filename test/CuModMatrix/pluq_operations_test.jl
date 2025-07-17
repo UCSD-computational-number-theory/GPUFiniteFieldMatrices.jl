@@ -211,7 +211,7 @@ function test_inverse_operations()
     println()
     
     println("Testing inverse...")
-    A_has_inverse, A_inv = is_invertible_with_inverse(A)
+    A_has_inverse, A_inv = GPUFiniteFieldMatrices.is_invertible_with_inverse(A)
     println("A has inverse: ", A_has_inverse)
     println("A_inv = ")
     display(A_inv)
@@ -220,7 +220,7 @@ function test_inverse_operations()
 
     println("Testing inverse of identity matrix...")
     B = GPUFiniteFieldMatrices.eye(Int, 3, modulus)
-    B_has_inverse, B_inv = is_invertible_with_inverse(B)
+    B_has_inverse, B_inv = GPUFiniteFieldMatrices.is_invertible_with_inverse(B)
     @test B_has_inverse
     @test Array(B * B_inv) ≈ Array(B)
     @test Array(B_inv * B) ≈ Array(B)

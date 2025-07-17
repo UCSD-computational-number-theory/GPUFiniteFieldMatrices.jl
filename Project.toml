@@ -1,6 +1,6 @@
 name = "GPUFiniteFieldMatrices"
 uuid = "465031f1-b347-4f72-85f6-baf667cdf853"
-version = "0.2.4"
+version = "0.2.5"
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
