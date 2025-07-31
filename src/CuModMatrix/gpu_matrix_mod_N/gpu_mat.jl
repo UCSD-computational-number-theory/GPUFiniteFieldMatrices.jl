@@ -978,7 +978,7 @@ end
 
 In-place matrix multiplication: C = A * B mod N.
 """
-function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
+function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix; P=nothing)
     
     if (A.N != B.N || A.N != C.N)
         throw(CuModArrayModulusMismatchException(
@@ -996,7 +996,7 @@ function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
         ))
     end
     
-    stripe_mul!(C, A, B)
+    stripe_mul!(C, A, B; P=P)
     return C
 end
 
@@ -1005,7 +1005,7 @@ end
 
 In-place matrix-vector multiplication: z = A * x mod N.
 """
-function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
+function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=nothing)
     
     if (A.N != z.N || A.N != x.N)
         throw(CuModArrayModulusMismatchException(
@@ -1023,7 +1023,7 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
         ))
     end
     
-    stripe_mul!(z, A, x)
+    stripe_mul!(z, A, x; P=P)
     return z
 end
 

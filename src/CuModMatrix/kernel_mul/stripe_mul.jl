@@ -57,7 +57,7 @@ Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
 #the ".data" stuff won't work until then
-function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
+function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; P=nothing)
 
     if A.N != z.N || z.N != z.N 
         throw(ArgumentError("Mismatched modulus in matmul"))
@@ -69,7 +69,11 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
 
-    M = find_max_stripe_ops(eltype(A.data),A.N)
+    if P == nothing
+        M = find_max_stripe_ops(eltype(A.data),A.N)
+    else
+        M = find_max_stripe_ops(eltype(A.data),P)
+    end
 
     if M < 1
         throw(ArgumentError("cannot perform a single multiplication for modulus $(A.N) with datatype $(eltype(A.data))"))
@@ -119,7 +123,7 @@ end
 
 Matrix multiplication mod N based on stripes.
 """
-function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix)
+function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; P=nothing)
 
     if A.N != B.N || B.N != C.N 
         throw(ArgumentError("Mismatched modulus in matmul"))
@@ -131,8 +135,11 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
 
-
-    M = find_max_stripe_ops(eltype(A.data),A.N)
+    if P == nothing
+        M = find_max_stripe_ops(eltype(A.data),A.N)
+    else
+        M = find_max_stripe_ops(eltype(A.data),P)
+    end
 
     if M < 1
         throw(ArgumentError("cannot perform a single multiplication for modulus $(A.N) with datatype $(eltype(A.data))"))
