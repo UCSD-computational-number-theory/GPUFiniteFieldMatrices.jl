@@ -102,13 +102,6 @@ function lu_gpu_type(A::CuModMatrix, mod_N::Integer=-1)
     return (U, L, Perm)
 end
 
-"""
-    pluq_gpu_type(A::CuModMatrix, [mod_N])
-
-PLUP decomposition that works directly with CuModMatrix objects.
-Returns U and L matrices in CuModMatrix format.
-If mod_N is provided, it will be used instead of A.N for the modulus.
-"""
 function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=true, debug::Bool=false)
 
     function _print_plup_debug(stage)
@@ -144,21 +137,36 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
     col = 1
     Perm_col_idx = cols(A)
 
+    println("Starting pluq_gpu_type")
+    println("size d_A: ", size(d_A))
+
     while row <= rows(A) && col <= cols(A)
 
         _print_plup_debug("New iteration")
 
+        # println("Starting find_zero_col_and_swap")
+        # @time begin
         while find_zero_col_and_swap(d_A, rows(A), row, col, Perm_cols, Perm_col_idx; perm_stack)
             _print_plup_debug("Swapped zero-columns")
             Perm_col_idx -= 1
             if Perm_col_idx < col
                 print("Ran out of non-zero columns")
-                break
+                return CuModMatrix(d_A, N; new_size=(rows(A),cols(A))), CuModMatrix(d_L, N; new_size=(rows(A),rows(A))), Perm_rows, Perm_cols
             end
         end
+        # end
+
+        # TODO: find pivot val in batches with a kernel
+        # for example, if the current col is all zeros
+        # then search the next warp of threads to see if they are all zeros
+        # for each zero col uncovered, move them to the end of the matrix
+        # then move one of the nonzeros as the current pivot col
         
+        # println("Starting find_pivot_idx")
+        # @time begin
         k = find_pivot_idx(d_A, rows(A), row, col)
         p = find_pivot_val(d_A, rows(A), row, col)
+        # end
 
         if p == 0
             d_L[row:end,col] .= 1
@@ -167,20 +175,43 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
             continue
         end
 
+        # println("Starting swap_and_mod_lu")
+        # @time begin
         p_inv = mod_inv(p, N)
         swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, N, Perm_rows; perm_stack)
+        # end
 
+        # println("Starting normalize_lu_broadcast")
+        # @time begin
         _print_plup_debug("Swapped and modded")
         
         normalize_lu_broadcast(d_A, d_L, rows(A), row, col, p_inv, p, N)
+        # end
 
         _print_plup_debug("Normalized")
         
         if row == rows(A) || col == cols(A)
             break
         end
+        
+        # # @time begin
+        @cuda threads=(TILE_WIDTH) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH)) update_sub_matrix_col_shared(d_A, row, col, N)
+        # # end
 
-        @cuda threads=(TILE_WIDTH) blocks=(div(rows(A)-row,TILE_WIDTH)+1) update_sub_matrix_row(d_A, row, col, N)
+        # println("d_A:")
+        # display(@view d_A[1:rows(A),1:cols(A)])
+
+        # CUDA.synchronize()
+
+        # println("Starting update_sub_matrix_col_shared_tiled")
+        # @time begin
+        # @cuda threads=(TILE_WIDTH, 1) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH), ceil(Int, (rows(A)+1-row)/TILE_WIDTH)) update_sub_matrix_col_shared_tiled(d_A, row, col, N)
+        # end
+
+        # CUDA.synchronize()
+
+        # println("d_A:")
+        # display(@view d_A[1:rows(A),1:cols(A)])
 
         _print_plup_debug("Updated Sub Matrix")
 

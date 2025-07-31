@@ -165,7 +165,7 @@ end
 Computes the inverse of an upper triangular matrix.
 """
 function upper_triangular_inverse(A::CuModMatrix; debug::Bool=false)
-    rows, cols = size(A.data)
+    rows, cols = size(A)
 
     if rows <= MAX_INVERSE_SIZE
         return backward_sub_gpu_type(A)
@@ -344,7 +344,7 @@ function _recursive_lower_triangular_inverse(
 end
 
 function lower_triangular_inverse(A::CuModMatrix; debug::Bool=false)
-    rows, cols = size(A.data)
+    rows, cols = size(A)
 
     if cols <= MAX_INVERSE_SIZE
         return forward_sub_gpu_type(A)

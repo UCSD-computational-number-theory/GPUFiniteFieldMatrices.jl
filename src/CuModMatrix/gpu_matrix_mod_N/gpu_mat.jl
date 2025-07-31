@@ -1,6 +1,6 @@
 
 const TILE_WIDTH = 32
-const DEFAULT_TYPE = Float64
+const DEFAULT_TYPE = Float32
 
 struct CuModArraySizeMismatchException <: Exception
     message::String
@@ -67,7 +67,8 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
                  ))
         end
 
-        pad(d) = ceil(Int, d / TILE_WIDTH) * TILE_WIDTH
+        # pad(d) = ceil(Int, d / TILE_WIDTH) * TILE_WIDTH
+        pad(d) = d + TILE_WIDTH
 
         padded_size = pad.(size(A))
         
@@ -453,9 +454,9 @@ Checks if a matrix is invertible. If not, returns
 false and nothing. If it is, returns true and the
 inverse matrix.
 """
-function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, time::Bool=false)
+function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, timing::Bool=false)
 
-    if time
+    if timing
         start = time()
     else
         start = nothing
@@ -463,7 +464,7 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, time::Boo
 
     U, L, P, Q = _setup_PLUQ(A)
 
-    if time
+    if timing
         println("Time to setup PLUQ: ", time() - start)
     end
 
@@ -471,19 +472,19 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, time::Boo
         return false, nothing
     end
 
-    if time 
+    if timing 
         println("Time to check if invertible: ", time() - start)
     end
 
     U_inv = upper_triangular_inverse(U; debug=debug)
 
-    if time
+    if timing
         println("Time to compute U_inv: ", time() - start)
     end
 
     L_inv = lower_triangular_inverse(L; debug=debug)
 
-    if time
+    if timing
         println("Time to compute L_inv: ", time() - start)
     end
 
@@ -504,7 +505,7 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, time::Boo
 
     A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
 
-    if time
+    if timing
         println("Time to compute A_inv: ", time() - start)
     end
 
@@ -978,7 +979,7 @@ end
 
 In-place matrix multiplication: C = A * B mod N.
 """
-function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
+function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix; M=nothing, N=nothing)
     
     if (A.N != B.N || A.N != C.N)
         throw(CuModArrayModulusMismatchException(
@@ -996,7 +997,29 @@ function LinearAlgebra.mul!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix)
         ))
     end
     
-    stripe_mul!(C, A, B)
+    stripe_mul!(C, A, B; M=M, N=N)
+    return C
+end
+
+function mulN!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix; M=nothing, N=nothing)
+    
+    if (A.N != B.N || A.N != C.N)
+        throw(CuModArrayModulusMismatchException(
+            "All matrices must have the same modulus N"
+        ))
+    end
+    if cols(A) != rows(B)
+        throw(CuModArraySizeMismatchException(
+            "Matrix dimensions do not match for multiplication"
+        ))
+    end
+    if rows(C) != rows(A) || cols(C) != cols(B)
+        throw(CuModArraySizeMismatchException(
+            "Output matrix C has incorrect dimensions"
+        ))
+    end
+    
+    stripe_mul!(C, A, B; M=M, N=N)
     return C
 end
 

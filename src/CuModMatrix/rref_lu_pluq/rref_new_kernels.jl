@@ -384,17 +384,17 @@ function update_sub_matrix_row(d_A, p_row, p_col, P)
     row_idx = tid + (bid - 1) * blockDim().x + p_row
     
     # Skip if we're beyond the matrix size
-    if row_idx <= p_row || row_idx > size(d_A, 1)
-        return
-    end
+    # if row_idx <= p_row || row_idx > size(d_A, 1)
+    #     return
+    # end
     
     # Get the value in the pivot column for this row
     pivot_col_val = d_A[row_idx, p_col]
     
-    # If the value is already 0, no need to update
-    if pivot_col_val == 0
-        return
-    end
+    # # If the value is already 0, no need to update
+    # if pivot_col_val == 0
+    #     return
+    # end
     
     # Calculate the multiplier for elimination
     # For subtraction in modular arithmetic: a - b ≡ a + (P - b) (mod P)
@@ -413,6 +413,72 @@ function update_sub_matrix_row(d_A, p_row, p_col, P)
     # Zero out the pivot column value
     d_A[row_idx, p_col] = 0
     
+    return
+end
+
+function update_sub_matrix_col_shared(d_A, p_row, p_col, N)
+
+    tx = threadIdx().x
+    bx = blockIdx().x
+    bdx = blockDim().x
+
+    # Each thread corresponds to one column
+    col_idx = (bx - 1) * bdx + tx + p_col - 1
+
+    # Shared memory for the pivot row (size = bdx)
+    shared_pivot_row = CUDA.CuStaticSharedArray(Float64, TILE_WIDTH)
+
+    # Load pivot row values into shared memory (once, by top-row block)
+    if tx < bdx
+        shared_pivot_row[tx] = d_A[p_row, col_idx]
+    end
+
+    CUDA.sync_threads()
+
+    num_rows = size(d_A, 1)
+    
+    # Loop over rows beneath the pivot
+    row_idx = p_row + 1
+    while row_idx <= num_rows
+        # Get the pivot column value for this row
+        pivot_col_val = d_A[row_idx, p_col]
+        # If zero, nothing to do
+
+
+        multiplier = N - pivot_col_val
+        pivot_val = shared_pivot_row[tx]
+        d_A[row_idx, col_idx] = mod(d_A[row_idx, col_idx] + multiplier * pivot_val, N)
+
+        row_idx += 1
+    end
+
+    return
+end
+
+function update_sub_matrix_col_shared_tiled(d_A, p_row, p_col, N)
+
+    tx = threadIdx().x
+    bx = blockIdx().x
+    by = blockIdx().y
+
+    col_idx = (bx-1)*TILE_WIDTH + tx + p_col - 1
+    row_idx = (by-1)*TILE_WIDTH + p_row
+
+    shared_pivot_row = CUDA.CuStaticSharedArray(Float64, TILE_WIDTH)
+
+    if tx < TILE_WIDTH && by == 1
+        shared_pivot_row[tx] = d_A[p_row, col_idx]
+    end
+
+    CUDA.sync_threads()
+
+    row_shift = 1
+    while row_shift <= TILE_WIDTH
+        multiplier = N - d_A[row_idx + row_shift, p_col]
+        d_A[row_idx + row_shift, col_idx] = mod(d_A[row_idx + row_shift, col_idx] + multiplier * shared_pivot_row[tx], N)
+        row_shift += 1
+    end
+
     return
 end
 
