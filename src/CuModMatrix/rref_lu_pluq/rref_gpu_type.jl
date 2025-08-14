@@ -193,14 +193,19 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
         if row == rows(A) || col == cols(A)
             break
         end
-        
-        # # @time begin
-        @cuda threads=(TILE_WIDTH) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH)) update_sub_matrix_col_shared(d_A, row, col, N)
-        # # end
 
         # println("d_A:")
         # display(@view d_A[1:rows(A),1:cols(A)])
+        
+        # # @time begin
+        @cuda threads=(TILE_WIDTH) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH)) update_sub_matrix_col_2dshared(d_A, row, col, N, rows(A))
+        # # end
 
+        d_A[row+1:end,col] .= 0
+
+        # println("d_A:")
+        # display(@view d_A[1:rows(A),1:cols(A)])
+        
         # CUDA.synchronize()
 
         # println("Starting update_sub_matrix_col_shared_tiled")

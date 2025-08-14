@@ -6,6 +6,7 @@ using IterTools
 using BenchmarkTools
 using CSV
 using DelimitedFiles
+using Unroll
 
 const DEBUG = false
 

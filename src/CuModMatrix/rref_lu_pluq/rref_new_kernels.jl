@@ -455,6 +455,79 @@ function update_sub_matrix_col_shared(d_A, p_row, p_col, N)
     return
 end
 
+function update_sub_matrix_col_2dshared(d_A, p_row, p_col, N, num_rows)
+
+    tx = threadIdx().x
+    bx = blockIdx().x
+    bdx = blockDim().x
+
+    # Each thread corresponds to one row
+    t_shift = (bx - 1) * bdx + tx
+    b_shift = (bx - 1) * bdx
+    row_idx = t_shift + p_row
+
+    # CUDA.@cuprint "t_shift: $t_shift\n"
+    # CUDA.@cuprint "b_shift: $b_shift\n"
+    # CUDA.@cuprint "row_idx: $row_idx\n"
+
+    # Shared memory for the pivot row (size = bdx)
+    shared_pivot_row = CUDA.CuStaticSharedArray(Float64, TILE_WIDTH)
+    # shared_pivot_col = CUDA.CuStaticSharedArray(Float64, TILE_WIDTH)
+
+    @inbounds shared_pivot_row[tx] = d_A[p_row, t_shift + p_col]
+
+    CUDA.sync_threads()
+    
+    while row_idx <= num_rows + TILE_WIDTH - p_row
+
+        # shared_pivot_col[tx] = d_A[row_idx, t_shift + p_col]
+        multiplier = N - d_A[row_idx, p_col]
+
+        @unroll for col_idx = 1:TILE_WIDTH
+            @inbounds d_A[row_idx, col_idx + b_shift + p_col] = d_A[row_idx, col_idx + b_shift + p_col] + multiplier * shared_pivot_row[col_idx] #temp removed mod
+        end
+
+        # col_idx = b_shift + p_col
+
+        # @inbounds d_A[row_idx, col_idx + 1] = mod(d_A[row_idx, col_idx + 1] + multiplier * shared_pivot_row[1], N)
+        # @inbounds d_A[row_idx, col_idx + 2] = mod(d_A[row_idx, col_idx + 2] + multiplier * shared_pivot_row[2], N)
+        # @inbounds d_A[row_idx, col_idx + 3] = mod(d_A[row_idx, col_idx + 3] + multiplier * shared_pivot_row[3], N)
+        # @inbounds d_A[row_idx, col_idx + 4] = mod(d_A[row_idx, col_idx + 4] + multiplier * shared_pivot_row[4], N)
+        # @inbounds d_A[row_idx, col_idx + 5] = mod(d_A[row_idx, col_idx + 5] + multiplier * shared_pivot_row[5], N)
+        # @inbounds d_A[row_idx, col_idx + 6] = mod(d_A[row_idx, col_idx + 6] + multiplier * shared_pivot_row[6], N)
+        # @inbounds d_A[row_idx, col_idx + 7] = mod(d_A[row_idx, col_idx + 7] + multiplier * shared_pivot_row[7], N)
+        # @inbounds d_A[row_idx, col_idx + 8] = mod(d_A[row_idx, col_idx + 8] + multiplier * shared_pivot_row[8], N)
+        # @inbounds d_A[row_idx, col_idx + 9] = mod(d_A[row_idx, col_idx + 9] + multiplier * shared_pivot_row[9], N)
+        # @inbounds d_A[row_idx, col_idx + 10] = mod(d_A[row_idx, col_idx + 10] + multiplier * shared_pivot_row[10], N)
+        # @inbounds d_A[row_idx, col_idx + 11] = mod(d_A[row_idx, col_idx + 11] + multiplier * shared_pivot_row[11], N)
+        # @inbounds d_A[row_idx, col_idx + 12] = mod(d_A[row_idx, col_idx + 12] + multiplier * shared_pivot_row[12], N)
+        # @inbounds d_A[row_idx, col_idx + 13] = mod(d_A[row_idx, col_idx + 13] + multiplier * shared_pivot_row[13], N)
+        # @inbounds d_A[row_idx, col_idx + 14] = mod(d_A[row_idx, col_idx + 14] + multiplier * shared_pivot_row[14], N)
+        # @inbounds d_A[row_idx, col_idx + 15] = mod(d_A[row_idx, col_idx + 15] + multiplier * shared_pivot_row[15], N)
+        # @inbounds d_A[row_idx, col_idx + 16] = mod(d_A[row_idx, col_idx + 16] + multiplier * shared_pivot_row[16], N)
+        # @inbounds d_A[row_idx, col_idx + 17] = mod(d_A[row_idx, col_idx + 17] + multiplier * shared_pivot_row[17], N)
+        # @inbounds d_A[row_idx, col_idx + 18] = mod(d_A[row_idx, col_idx + 18] + multiplier * shared_pivot_row[18], N)
+        # @inbounds d_A[row_idx, col_idx + 19] = mod(d_A[row_idx, col_idx + 19] + multiplier * shared_pivot_row[19], N)
+        # @inbounds d_A[row_idx, col_idx + 20] = mod(d_A[row_idx, col_idx + 20] + multiplier * shared_pivot_row[20], N)
+        # @inbounds d_A[row_idx, col_idx + 21] = mod(d_A[row_idx, col_idx + 21] + multiplier * shared_pivot_row[21], N)
+        # @inbounds d_A[row_idx, col_idx + 22] = mod(d_A[row_idx, col_idx + 22] + multiplier * shared_pivot_row[22], N)
+        # @inbounds d_A[row_idx, col_idx + 23] = mod(d_A[row_idx, col_idx + 23] + multiplier * shared_pivot_row[23], N)
+        # @inbounds d_A[row_idx, col_idx + 24] = mod(d_A[row_idx, col_idx + 24] + multiplier * shared_pivot_row[24], N)
+        # @inbounds d_A[row_idx, col_idx + 25] = mod(d_A[row_idx, col_idx + 25] + multiplier * shared_pivot_row[25], N)
+        # @inbounds d_A[row_idx, col_idx + 26] = mod(d_A[row_idx, col_idx + 26] + multiplier * shared_pivot_row[26], N)
+        # @inbounds d_A[row_idx, col_idx + 27] = mod(d_A[row_idx, col_idx + 27] + multiplier * shared_pivot_row[27], N)
+        # @inbounds d_A[row_idx, col_idx + 28] = mod(d_A[row_idx, col_idx + 28] + multiplier * shared_pivot_row[28], N)
+        # @inbounds d_A[row_idx, col_idx + 29] = mod(d_A[row_idx, col_idx + 29] + multiplier * shared_pivot_row[29], N)
+        # @inbounds d_A[row_idx, col_idx + 30] = mod(d_A[row_idx, col_idx + 30] + multiplier * shared_pivot_row[30], N)
+        # @inbounds d_A[row_idx, col_idx + 31] = mod(d_A[row_idx, col_idx + 31] + multiplier * shared_pivot_row[31], N)
+        # @inbounds d_A[row_idx, col_idx + 32] = mod(d_A[row_idx, col_idx + 32] + multiplier * shared_pivot_row[32], N)
+
+        row_idx += TILE_WIDTH
+    end
+
+    return
+end
+
 function update_sub_matrix_col_shared_tiled(d_A, p_row, p_col, N)
 
     tx = threadIdx().x

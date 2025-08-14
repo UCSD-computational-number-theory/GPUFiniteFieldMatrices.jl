@@ -3,6 +3,7 @@ using CUDA
 using LinearAlgebra
 using BenchmarkTools
 using Suppressor
+using Unroll
 
 using GPUFiniteFieldMatrices
 
