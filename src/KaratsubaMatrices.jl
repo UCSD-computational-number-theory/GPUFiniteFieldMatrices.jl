@@ -149,9 +149,9 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray,plan1::K
     C.data2 .= C.data2 - A.data2*B.data2
     =#
     GPUFiniteFieldMatrices.add!(plan2.data1,A.data1,A.data2,A.N1^2)
-    GPUFiniteFieldMatrices.add!(plan1.data1,B.data1,B.data2,B.N1^2)
+    GPUFiniteFieldMatrices.add!(plan1.data2,B.data1,B.data2,B.N1^2)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1)
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,plan2.data1,plan1.data1,P=A.N1)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,plan2.data1,plan1.data2,P=A.N1)
     GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
     divide_elements!(plan1.data1,C.data1,A.N1)
     GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,B.N1^2)
