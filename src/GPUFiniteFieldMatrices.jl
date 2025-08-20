@@ -16,10 +16,13 @@ include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
 include("CuModMatrix/kernel_mul/mat_mul_ops.jl")
 include("CuModMatrix/hensel_lifting/hensel.jl")
 include("CuModMatrix/kernel_mul/stripe_mul.jl")
+include("KaratsubaMatrices.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
 export inverse, unsafe_CuModMatrix
+
+export KaratsubaArray, KaratsubaMatrix, KaratsubaVector
 
 # Export utility functions
 export eye 
