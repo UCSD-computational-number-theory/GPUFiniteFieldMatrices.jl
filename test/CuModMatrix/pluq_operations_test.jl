@@ -233,9 +233,6 @@ end
 function test_pluq()
     test_rref_operations()
     test_lu_operations()
-    # test_pluq_operations() # Deprecated due to new permutation implementation
-    # already tested in triangular inverse
-    # test_inverse_operations()
     
     println("\nAll RREF and decomposition tests passed!")
 end

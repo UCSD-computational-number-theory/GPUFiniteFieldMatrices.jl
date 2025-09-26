@@ -1,5 +1,5 @@
 
-const TILE_WIDTH = 32
+const TILE_WIDTH = 4
 const DEFAULT_TYPE = Float32
 
 struct CuModArraySizeMismatchException <: Exception
@@ -97,7 +97,7 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         copyto!(data, A_inds, converted, A_inds)
         
         if mod
-            threads = 32
+            threads = TILE_WIDTH
             blocks = cld(length(data), threads)
             @cuda threads=threads blocks=blocks mod_kernel!(data, N)
         end
@@ -168,7 +168,7 @@ This constructor is useful for creating a new CuModMatrix while
 keeping the same data as a previous CuModMatrix.
 """
 function CuModMatrix(A::CuArray{T, 2}, N::Int; mod=false, new_size=nothing) where {T}
-    CuModArray{T,2}(A,N,mod=mod,new_size=new_size)
+    CuModArray{T,2}(A,N;mod=mod,new_size=new_size)
 end
 
 """
@@ -432,8 +432,8 @@ function Base.transpose(A::CuModMatrix)
     return CuModMatrix(transpose(A.data), A.N; new_size=size(A))
 end
 
-function _setup_PLUQ(A::CuModMatrix; perm_stack::Bool=true)
-    U, L, P, Q = pluq_gpu_type(A; perm_stack=true)
+function _setup_PLUQ(A::CuModMatrix; debug::Bool=false)
+    U, L, P, Q = pluq_gpu_kernel(A, debug=debug)
     return U, L, P, Q
 end
 
@@ -454,38 +454,41 @@ Checks if a matrix is invertible. If not, returns
 false and nothing. If it is, returns true and the
 inverse matrix.
 """
-function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, timing::Bool=false)
+function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
 
-    if timing
-        start = time()
-    else
-        start = nothing
+    if debug
+        println("A")
+        display(A)
     end
 
-    U, L, P, Q = _setup_PLUQ(A)
-
-    if timing
-        println("Time to setup PLUQ: ", time() - start)
+    NVTX.@range "Setup PLUQ" begin
+        U, L, Perm_rows, Perm_cols = _setup_PLUQ(A, debug=debug)
     end
 
-    if !_is_invertible(U)
-        return false, nothing
+    if debug
+        println("L*U")
+        res = L*U
+        display(res)
+        println("P*L*U*Q")
+        L_perm = apply_row_perm(Perm_rows, L)
+        U_perm = apply_col_perm(Perm_cols, U)
+        res_perm = L_perm*U_perm
+        display(res_perm)
+        return
     end
 
-    if timing 
-        println("Time to check if invertible: ", time() - start)
+    NVTX.@range "Check if invertible" begin
+        if !_is_invertible(U)
+            return false, nothing
+        end
     end
 
-    U_inv = upper_triangular_inverse(U; debug=debug)
-
-    if timing
-        println("Time to compute U_inv: ", time() - start)
+    NVTX.@range "Compute U_inv" begin
+        U_inv = upper_triangular_inverse(U; debug=debug)
     end
 
-    L_inv = lower_triangular_inverse(L; debug=debug)
-
-    if timing
-        println("Time to compute L_inv: ", time() - start)
+    NVTX.@range "Compute L_inv" begin
+        L_inv = lower_triangular_inverse(L; debug=debug)
     end
 
     if debug
@@ -495,18 +498,10 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, timing::B
         println("size L_inv.data: ", size(L_inv.data))
         println("size A: ", size(A))
         println("size A.data: ", size(A.data))
-    end
-
-    function _compute_A_inv(U_inv, L_inv, P, Q)
-        apply_col_inv_perm!(P, L_inv)
-        apply_row_inv_perm!(Q, U_inv)
-        return U_inv * L_inv
-    end
-
-    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
-
-    if timing
-        println("Time to compute A_inv: ", time() - start)
+        println("size Perm_rows: ", size(Perm_rows))
+        println("type Perm_rows: ", typeof(Perm_rows))
+        println("size Perm_cols: ", size(Perm_cols))
+        println("type Perm_cols: ", typeof(Perm_cols))
     end
 
     if debug
@@ -518,14 +513,52 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false, timing::B
         display(L_inv)
         println("U_inv")
         display(U_inv)
-        println("Q_mat")
-        display(Q)
-        println("P_mat")
-        display(P)
+    end
+
+    function _compute_A_inv(U_inv, L_inv, Perm_rows, Perm_cols)
+        NVTX.@range "Apply col perm" begin
+            apply_col_inv_perm!(Perm_rows, U_inv)
+        end
+
+        NVTX.@range "Apply row inv perm" begin
+            apply_row_inv_perm!(Perm_cols, L_inv)
+        end
+        
+        NVTX.@range "Multiply" begin
+            M = U_inv * L_inv
+        end
+        
+        return M
+    end
+
+    function _compute_A_inv_new(U_inv, L_inv, Perm_rows, Perm_cols)
+        NVTX.@range "Multiply" begin
+            M = U_inv * L_inv
+        end
+
+        NVTX.@range "Apply col inv perm" begin
+            apply_col_inv_perm!(Perm_rows, M)
+        end
+
+        NVTX.@range "Apply row inv perm" begin
+            apply_row_inv_perm!(Perm_cols, M)
+        end
+        
+        return M
+    end
+
+
+    A_inv = _compute_A_inv_new(U_inv, L_inv, Perm_rows, Perm_cols)
+
+    if debug
+        println("Perm_cols")
+        display(Perm_cols)
+        println("Perm_rows")
+        display(Perm_rows)
         println("A_inv")
         display(A_inv)
-        println("A_inv * A")
-        display(A_inv * A)
+        println("A * A_inv")
+        display(A*A_inv)
     end
 
     return true, A_inv
@@ -638,8 +671,8 @@ end
 Creates a matrix of zeros in the mod N ring.
 """
 function zeros(::Type{T}, rows::Integer, cols::Integer, N::Integer; new_size::Tuple{Int,Int}=(rows,cols)) where T
-    padded_rows = ceil(Int, rows / TILE_WIDTH) * TILE_WIDTH
-    padded_cols = ceil(Int, cols / TILE_WIDTH) * TILE_WIDTH
+    padded_rows = rows + TILE_WIDTH
+    padded_cols = cols + TILE_WIDTH
     CuModMatrix(CUDA.zeros(T, padded_rows, padded_cols), N, new_size=new_size)
 end
 

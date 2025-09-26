@@ -7,6 +7,7 @@ using BenchmarkTools
 using CSV
 using DelimitedFiles
 using Unroll
+using NVTX
 
 const DEBUG = false
 
@@ -22,6 +23,8 @@ include("CuModMatrix/rref_lu_pluq/rref_gpu_type.jl")
 
 include("CuModMatrix/triangular/substitution.jl")
 include("CuModMatrix/triangular/triangular_inverse.jl")
+
+include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
@@ -47,5 +50,6 @@ export perm_array_to_matrix
 export apply_col_perm!, apply_row_perm!
 export upper_triangular_inverse, lower_triangular_inverse
 export mod_inv
+export pluq_gpu_kernels
 
 end

@@ -23,7 +23,7 @@ function _recursive_upper_triangular_inverse(
     N::Int;
     debug::Bool=false
 )
-    if row_upper - row_lower <= MAX_INVERSE_SIZE
+    if row_upper - row_lower < MAX_INVERSE_SIZE
 
         if debug
             println("First branch: Input is already small enough!")
@@ -31,13 +31,23 @@ function _recursive_upper_triangular_inverse(
             println("col_lower: $col_lower, col_upper: $col_upper")
         end
 
-        A_all = CUDA.zeros(eltype(A), 32, col_upper - col_lower + 1)
+        A_all = CUDA.zeros(eltype(A), TILE_WIDTH, col_upper - col_lower + 1)
         copyto!(A_all, @view A[row_lower:row_upper, col_lower:col_upper])
-        A_all_inv = CUDA.zeros(eltype(A), 32, col_upper - col_lower + 1)
+        A_all_inv = CUDA.zeros(eltype(A), TILE_WIDTH, col_upper - col_lower + 1)
 
-        @assert size(A_all) == size(A_all_inv)
+        if debug
+            println("A_all:")
+            display(A_all)
+            @assert size(A_all) == size(A_all_inv)
+        end
 
         @cuda threads=TILE_WIDTH blocks=(ceil(Int, size(A_all, 1) / TILE_WIDTH)) backward_sub_kernel(A_all, A_all_inv, N)
+
+        if debug
+            println("A_all_inv:")
+            display(A_all_inv)
+        end
+
         A_inv[row_lower:row_upper, col_lower:col_upper] = A_all_inv
         return
 
@@ -46,7 +56,7 @@ function _recursive_upper_triangular_inverse(
     # Find a split such that A_21 is all zeros
     # This means A_11 must be square no matter what
     # We also want the sizes to be multiples of TILE_WIDTH
-    row_mid = (row_upper - row_lower + 1) ÷ TILE_WIDTH ÷ 2 * TILE_WIDTH + row_lower - 1
+    row_mid = row_lower + min((row_upper - row_lower + 1) ÷ TILE_WIDTH * TILE_WIDTH, TILE_WIDTH) - 1
     col_mid = row_mid
 
     if debug
@@ -56,8 +66,8 @@ function _recursive_upper_triangular_inverse(
 
         @assert (row_mid - row_lower + 1) % TILE_WIDTH == 0
         @assert (col_mid - col_lower + 1) % TILE_WIDTH == 0
-        @assert (row_upper - row_mid) % TILE_WIDTH == 0
-        @assert (col_upper - col_mid) % TILE_WIDTH == 0
+        # @assert (row_upper - row_mid) % TILE_WIDTH == 0
+        # @assert (col_upper - col_mid) % TILE_WIDTH == 0
     end
 
     if row_mid - row_lower <= MAX_INVERSE_SIZE
@@ -95,9 +105,9 @@ function _recursive_upper_triangular_inverse(
         end
 
         # Find inverse of lower right block
-        A_22 = CUDA.zeros(eltype(A), row_upper - row_mid, col_upper - col_mid)
+        A_22 = CUDA.zeros(eltype(A), max(row_upper - row_mid, TILE_WIDTH), max(col_upper - col_mid, TILE_WIDTH))
         copyto!(A_22, @view A[row_mid+1:row_upper, col_mid+1:col_upper])
-        A_22_inv = CUDA.zeros(eltype(A), col_upper - col_mid, row_upper - row_mid)
+        A_22_inv = CUDA.zeros(eltype(A), max(col_upper - col_mid, TILE_WIDTH), max(row_upper - row_mid, TILE_WIDTH))
 
         if debug
             println("A_22:")
@@ -114,10 +124,10 @@ function _recursive_upper_triangular_inverse(
             display(A_22_inv)   
             println("A_22 * A_22_inv:")
             display(mod.(A_22 * A_22_inv, N))
-            @assert Array(mod.(A_22 * A_22_inv, N)) ≈ Array(Matrix{eltype(A)}(I, size(A_22)))
+            @assert Array(mod.(A_22 * A_22_inv, N))[1:(row_upper - row_mid), 1:(col_upper - col_mid)] ≈ Array(Matrix{eltype(A)}(I, row_upper - row_mid, col_upper - col_mid))
         end
 
-        A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv
+        A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)]
 
         if debug
             println("A_inv:")
@@ -127,13 +137,13 @@ function _recursive_upper_triangular_inverse(
         # Find inverse of upper right block
         A_12 = @view A[row_lower:row_mid, col_mid+1:col_upper]
         # A_inv[row_lower:row_mid, col_mid+1:col_upper] = mod.(mod.(-A_11_inv * A_12 * A_22_inv, N) .+ N, N)
-        A_inv[col_lower:col_mid, row_mid+1:row_upper] = N .- mod.(mod.(A_11_inv * A_12, N) * A_22_inv, N)
+        A_inv[row_mid+1:row_upper, col_lower:col_mid] = N .- mod.(mod.(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_12, N) * A_11_inv, N)
 
         if debug
             println("A_12:")
             display(A_12)
             println("-A_11_inv * A_12 * A_22_inv:")
-            display(mod.(mod.(-A_11_inv * A_12 * A_22_inv, N) .+ N, N))
+            display(mod.(mod.(-A_11_inv * A_12 * A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)], N) .+ N, N))
             println("A_inv:")
             display(A_inv)
         end
@@ -153,7 +163,7 @@ function _recursive_upper_triangular_inverse(
         A_12 = @view A[row_lower:row_mid, col_mid+1:col_upper]
         A_11_inv = @view A_inv[col_lower:col_mid, row_lower:row_mid]
         A_22_inv = @view A_inv[col_mid+1:col_upper, row_mid+1:row_upper]
-        A_inv[col_lower:col_mid, row_mid+1:row_upper] = N .- mod.(mod.(A_11_inv * A_12, N) * A_22_inv, N)
+        A_inv[row_mid+1:row_upper, col_lower:col_mid] = N .- mod.(mod.(A_22_inv * A_12, N) * A_11_inv, N)
 
         return
     end
@@ -172,6 +182,10 @@ function upper_triangular_inverse(A::CuModMatrix; debug::Bool=false)
     end
 
     A_inv = GPUFiniteFieldMatrices.zeros(eltype(A.data), size(A)[2], size(A)[1], A.N)
+
+    if debug
+        println("size(A.data): ", size(A.data))
+    end
 
     if rows <= cols #square or wide
         _recursive_upper_triangular_inverse(
@@ -199,7 +213,7 @@ function _recursive_lower_triangular_inverse(
     N::Int;
     debug::Bool=false
 )
-    if col_upper - col_lower <= MAX_INVERSE_SIZE
+    if col_upper - col_lower < MAX_INVERSE_SIZE
 
         if debug
             println("First branch: Input is already small enough!")
@@ -207,9 +221,9 @@ function _recursive_lower_triangular_inverse(
             println("col_lower: $col_lower, col_upper: $col_upper")
         end
 
-        A_all = CUDA.zeros(eltype(A), row_upper - row_lower + 1, 32)
+        A_all = CUDA.zeros(eltype(A), row_upper - row_lower + 1, TILE_WIDTH)
         copyto!(A_all, @view A[col_lower:col_upper, row_lower:row_upper])
-        A_all_inv = CUDA.zeros(eltype(A), row_upper - row_lower + 1, 32)
+        A_all_inv = CUDA.zeros(eltype(A), row_upper - row_lower + 1, TILE_WIDTH)
 
         if debug
             println("A_all:")
@@ -223,6 +237,7 @@ function _recursive_lower_triangular_inverse(
             println("A_all_inv:")
             display(A_all_inv)
         end
+
         A_inv[col_lower:col_upper, row_lower:row_upper] = A_all_inv
         return
 
@@ -231,7 +246,7 @@ function _recursive_lower_triangular_inverse(
     # Find a split such that A_21 is all zeros
     # This means A_11 must be square no matter what
     # We also want the sizes to be multiples of TILE_WIDTH
-    col_mid = (col_upper - col_lower + 1) ÷ TILE_WIDTH ÷ 2 * TILE_WIDTH + col_lower - 1
+    col_mid = col_lower + min((col_upper - col_lower + 1) ÷ TILE_WIDTH * TILE_WIDTH, TILE_WIDTH) - 1
     row_mid = col_mid
 
     if debug
@@ -241,8 +256,8 @@ function _recursive_lower_triangular_inverse(
 
         @assert (row_mid - row_lower + 1) % TILE_WIDTH == 0
         @assert (col_mid - col_lower + 1) % TILE_WIDTH == 0
-        @assert (row_upper - row_mid) % TILE_WIDTH == 0
-        @assert (col_upper - col_mid) % TILE_WIDTH == 0
+        # @assert (row_upper - row_mid) % TILE_WIDTH == 0
+        # @assert (col_upper - col_mid) % TILE_WIDTH == 0
     end
 
     if col_mid - col_lower <= MAX_INVERSE_SIZE
@@ -280,9 +295,9 @@ function _recursive_lower_triangular_inverse(
         end
 
         # Find inverse of lower right block
-        A_22 = CUDA.zeros(eltype(A), row_upper - row_mid, col_upper - col_mid)
+        A_22 = CUDA.zeros(eltype(A), max(row_upper - row_mid, TILE_WIDTH), max(col_upper - col_mid, TILE_WIDTH))
         copyto!(A_22, @view A[row_mid+1:row_upper, col_mid+1:col_upper])
-        A_22_inv = CUDA.zeros(eltype(A), col_upper - col_mid, row_upper - row_mid)
+        A_22_inv = CUDA.zeros(eltype(A), max(col_upper - col_mid, TILE_WIDTH), max(row_upper - row_mid, TILE_WIDTH))
 
         if debug
             println("A_22:")
@@ -299,10 +314,10 @@ function _recursive_lower_triangular_inverse(
             display(A_22_inv)   
             println("A_22 * A_22_inv:")
             display(mod.(A_22 * A_22_inv, N))
-            @assert Array(mod.(A_22 * A_22_inv, N)) ≈ Array(Matrix{eltype(A)}(I, size(A_22)))
+            @assert Array(mod.(A_22 * A_22_inv, N))[1:(row_upper - row_mid), 1:(col_upper - col_mid)] ≈ Array(Matrix{eltype(A)}(I, row_upper - row_mid, col_upper - col_mid))
         end
 
-        A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv
+        A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)]
 
         if debug
             println("A_inv:")
@@ -311,13 +326,13 @@ function _recursive_lower_triangular_inverse(
 
         # Find inverse of lower left block
         A_21 = @view A[row_mid+1:row_upper, col_lower:col_mid]
-        A_inv[col_mid+1:col_upper, row_lower:row_mid] = N .- mod.(mod.(A_22_inv * A_21, N) * A_11_inv, N)
+        A_inv[col_mid+1:col_upper, row_lower:row_mid] = N .- mod.(mod.(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_21, N) * A_11_inv, N)
 
         if debug
             println("A_21:")
             display(A_21)
             println("A_22_inv * A_21 * A_11_inv:")
-            display(mod.(mod.(A_22_inv * A_21, N) * A_11_inv, N))
+            display(mod.(mod.(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_21, N) * A_11_inv, N))
             println("A_inv:")
             display(A_inv)
         end

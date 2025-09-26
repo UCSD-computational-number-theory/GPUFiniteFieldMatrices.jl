@@ -123,6 +123,7 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
     A_padded_rows = size(A.data, 1)
     A_padded_cols = size(A.data, 2)
 
+    NVTX.@range "Init PLUQ d_A" begin
     d_A = copy(A.data)
     d_L = CUDA.CuArray{CUDA.eltype(A.data)}(undef, (A_padded_rows, A_padded_rows))
     if perm_stack
@@ -131,6 +132,7 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
     else
         Perm_rows = Array(1:A_padded_rows)
         Perm_cols = Array(1:A_padded_cols)
+    end
     end
 
     row = 1
@@ -146,6 +148,7 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
 
         # println("Starting find_zero_col_and_swap")
         # @time begin
+        NVTX.@range "Find Zero Col and Swap" begin
         while find_zero_col_and_swap(d_A, rows(A), row, col, Perm_cols, Perm_col_idx; perm_stack)
             _print_plup_debug("Swapped zero-columns")
             Perm_col_idx -= 1
@@ -153,6 +156,7 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
                 print("Ran out of non-zero columns")
                 return CuModMatrix(d_A, N; new_size=(rows(A),cols(A))), CuModMatrix(d_L, N; new_size=(rows(A),rows(A))), Perm_rows, Perm_cols
             end
+        end
         end
         # end
 
@@ -164,44 +168,56 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
         
         # println("Starting find_pivot_idx")
         # @time begin
+        NVTX.@range "Find Pivot" begin
         k = find_pivot_idx(d_A, rows(A), row, col)
         p = find_pivot_val(d_A, rows(A), row, col)
+        end
         # end
 
+        NVTX.@range "Check if Pivot is Zero" begin
         if p == 0
             d_L[row:end,col] .= 1
             d_L[row+1:end,col] .= 0
             col += 1
             continue
         end
+        end
 
         # println("Starting swap_and_mod_lu")
         # @time begin
-        p_inv = mod_inv(p, N)
-        swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, N, Perm_rows; perm_stack)
+        NVTX.@range "Swap and Mod" begin
+            p_inv = mod_inv(p, N)
+            swap_and_mod_lu(d_A, d_L, row+k-1, row, p_inv, N, Perm_rows; perm_stack)
+        end
         # end
 
         # println("Starting normalize_lu_broadcast")
         # @time begin
         _print_plup_debug("Swapped and modded")
-        
-        normalize_lu_broadcast(d_A, d_L, rows(A), row, col, p_inv, p, N)
+        NVTX.@range "Normalize LU Broadcast" begin
+            normalize_lu_broadcast(d_A, d_L, rows(A), row, col, p_inv, p, N)
+        end
         # end
 
         _print_plup_debug("Normalized")
-        
+
+        NVTX.@range "Check if Done" begin
         if row == rows(A) || col == cols(A)
             break
         end
-
+        end
         # println("d_A:")
         # display(@view d_A[1:rows(A),1:cols(A)])
         
         # # @time begin
-        @cuda threads=(TILE_WIDTH) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH)) update_sub_matrix_col_2dshared(d_A, row, col, N, rows(A))
+        NVTX.@range "Update Sub Matrix Row Shared" begin
+            @cuda threads=(TILE_WIDTH) blocks=(ceil(Int, (cols(A)+1-col)/TILE_WIDTH)) update_sub_matrix_row_2dshared(d_A, row, col, N, rows(A))
+        end
         # # end
 
-        d_A[row+1:end,col] .= 0
+        NVTX.@range "Zero out Sub Matrix" begin
+            d_A[row+1:end,col] .= 0
+        end
 
         # println("d_A:")
         # display(@view d_A[1:rows(A),1:cols(A)])
@@ -224,17 +240,19 @@ function pluq_gpu_type(A::CuModMatrix; perm_stack::Bool=false, perm_array::Bool=
         col += 1
     end
     
+    NVTX.@range "End PLUQ" begin
     U = CuModMatrix(d_A, N; new_size=(rows(A),cols(A)))
     L = CuModMatrix(d_L, N; new_size=(rows(A),rows(A)))
-    
+    end
+
     if perm_array
         return (U, L, Perm_rows, Perm_cols)
     else
         return (
             U, 
             L, 
-            perm_array_to_matrix(Perm_rows, N; new_size=(rows(A), rows(A)), perm_stack), 
-            perm_array_to_matrix(Perm_cols, N; new_size=(cols(A), cols(A)), perm_stack)
+            perm_array_to_matrix(Perm_rows, N, (rows(A), rows(A)), perm_stack=perm_stack), 
+            perm_array_to_matrix(Perm_cols, N, (cols(A), cols(A)), perm_stack=perm_stack)
         )
     end
 end 
