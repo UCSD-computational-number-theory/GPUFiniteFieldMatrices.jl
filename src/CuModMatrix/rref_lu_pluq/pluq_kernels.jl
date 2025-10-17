@@ -8,8 +8,6 @@ function pluq_gpu_kernel(
     debug::Bool = false
 )
 
-    # CUDA.reclaim()
-
     function _print_plup_debug(stage)
         if debug
             println("Stage: $stage")
@@ -18,10 +16,13 @@ function pluq_gpu_kernel(
             println("Perm_rows: ", Perm_rows)
             println("row: ", row)
             println("col: ", col)
+            println()
+            
             println("d_A:")
             display(@view d_A[1:rows,1:cols])
             println("d_L:")
             display(@view d_L[1:rows,1:rows])
+            println()
         end
     end
 
@@ -60,6 +61,9 @@ function pluq_gpu_kernel(
                     break
                 else
                     col += 1
+                    if col > cols
+                        break
+                    end
                 end
             end
         end
@@ -85,7 +89,7 @@ function pluq_gpu_kernel(
         _print_plup_debug("Iteration $row, $col moved and zeroed out")
 
         NVTX.@range "Update sub matrix" begin
-            @cuda blocks=cld(cols - col + 1, TILE_WIDTH) threads=TILE_WIDTH shmem=TILE_WIDTH*sizeof(Float32) update_sub_matrix_kernel(d_A, d_L, row, col, N, rows)
+            @cuda blocks=cld(cols - col + 1, TILE_WIDTH) threads=TILE_WIDTH shmem=TILE_WIDTH*sizeof(DEFAULT_TYPE) update_sub_matrix_kernel(d_A, d_L, row, col, N, rows)
         end
 
         _print_plup_debug("Iteration $row, $col updated sub matrix")
@@ -292,15 +296,16 @@ function update_sub_matrix_kernel(d_A, d_L, p_row, p_col, N, num_rows)
 
     t_shift = (bx - 1) * bdx + tx
     b_shift = (bx - 1) * bdx
-    row_idx = t_shift + p_row
+    row_idx = p_row + tx
 
-    shared_pivot_row = CUDA.CuStaticSharedArray(Float32, TILE_WIDTH)
+    shared_pivot_row = CUDA.CuStaticSharedArray(DEFAULT_TYPE, TILE_WIDTH)
 
     @inbounds shared_pivot_row[tx] = d_A[p_row, p_col + t_shift]
 
     CUDA.sync_threads()
     
-    while row_idx <= num_rows + TILE_WIDTH - p_row
+    # while row_idx <= num_rows + TILE_WIDTH - p_row + 1
+    while row_idx <= num_rows
 
         multiplier = N - d_L[row_idx, p_col]
 

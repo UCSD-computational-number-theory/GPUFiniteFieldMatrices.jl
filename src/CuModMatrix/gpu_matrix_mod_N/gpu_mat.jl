@@ -1,5 +1,5 @@
 
-const TILE_WIDTH = 4
+const TILE_WIDTH = 32
 const DEFAULT_TYPE = Float32
 
 struct CuModArraySizeMismatchException <: Exception

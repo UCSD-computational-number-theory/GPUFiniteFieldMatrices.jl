@@ -25,6 +25,8 @@ include("CuModMatrix/triangular/substitution.jl")
 include("CuModMatrix/triangular/triangular_inverse.jl")
 
 include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
+include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
+include("CuModMatrix/triangular/substitution_inplace.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
@@ -51,5 +53,7 @@ export apply_col_perm!, apply_row_perm!
 export upper_triangular_inverse, lower_triangular_inverse
 export mod_inv
 export pluq_gpu_kernels
+export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
+export forward_sub_gpu_type_32, backward_sub_gpu_type_32
 
 end

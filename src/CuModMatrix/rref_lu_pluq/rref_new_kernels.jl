@@ -287,16 +287,16 @@ function swap_and_mod_threaded(d_A, k, p_row, inv)
     return
 end
 
-function swap_and_mod(d_A, k, p_row, inv, P)
+# function swap_and_mod(d_A, k, p_row, inv, P)
 
-    # swap k and p_row
-    d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
+#     # swap k and p_row
+#     d_A[k,:], d_A[p_row,:] = d_A[p_row,:], d_A[k,:]
 
-    # normalize p_row
-    d_A[p_row,:] = (d_A[p_row,:] .* inv) .% P
+#     # normalize p_row
+#     d_A[p_row,:] = (d_A[p_row,:] .* inv) .% P
 
-    return
-end
+#     return
+# end
 
 function swap_and_mod_lu(
     d_A, d_L, k, p_row, p_inv, N, Perm; 
