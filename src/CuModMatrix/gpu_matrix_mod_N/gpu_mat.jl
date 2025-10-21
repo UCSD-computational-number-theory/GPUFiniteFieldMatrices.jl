@@ -238,6 +238,8 @@ Base.length(A::CuModArray{T,1}) where T = size(A)[1]
 Base.length(A::CuModArray{T,2}) where T = rows(A)*cols(A)
 Base.length(A::CuModArray) = prod(size(A))
 
+Base.eltype(A::CuModArray) = eltype(A.data)
+
 # User needs to do CUDA.@allowscalar to use these
 #
 # Also, 3D indexing is currently not supported because we have no
@@ -969,6 +971,11 @@ function mod_elements!(A::CuModArray, mod_N::Integer=-1)
     return A
 end
 
+function trunc_elements!(A::CuModArray)
+    @. A.data = trunc(A.data)
+    return A
+end
+
 # Utility functions to change modulus
 """
     change_modulus(A, new_N)
@@ -1061,7 +1068,7 @@ end
 
 In-place matrix-vector multiplication: z = A * x mod N.
 """
-function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
+function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=nothing)
     
     if (A.N != z.N || A.N != x.N)
         throw(CuModArrayModulusMismatchException(
@@ -1079,7 +1086,7 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector)
         ))
     end
     
-    stripe_mul!(z, A, x)
+    stripe_mul!(z, A, x; P=P)
     return z
 end
 

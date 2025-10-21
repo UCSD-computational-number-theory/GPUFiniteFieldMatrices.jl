@@ -16,6 +16,7 @@ include("CuModMatrix/gpu_matrix_mod_N/gpu_mat.jl")
 include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
 include("CuModMatrix/kernel_mul/mat_mul_ops.jl")
 include("CuModMatrix/kernel_mul/stripe_mul.jl")
+include("KaratsubaMatrices.jl")
 
 include("CuModMatrix/rref_lu_pluq/permutations.jl")
 include("CuModMatrix/rref_lu_pluq/rref_new_kernels.jl")
@@ -31,6 +32,8 @@ include("CuModMatrix/triangular/substitution_inplace.jl")
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
 export inverse, unsafe_CuModMatrix
+
+export KaratsubaArray, KaratsubaMatrix, KaratsubaVector
 
 # Export utility functions
 export eye 
