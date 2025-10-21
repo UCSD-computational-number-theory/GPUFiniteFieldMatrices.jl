@@ -1,6 +1,6 @@
 
 const TILE_WIDTH = 32
-const DEFAULT_TYPE = Float32
+const DEFAULT_TYPE = UInt8
 
 struct CuModArraySizeMismatchException <: Exception
     message::String

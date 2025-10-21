@@ -1,6 +1,7 @@
 using GPUFiniteFieldMatrices
 using NVTX
 using LinearAlgebra
+using CUDA
 
 function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
     NVTX.@range "Init A p=$p, m=$m, n=$n" begin
@@ -109,7 +110,7 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
     return A_inv
 end
 
-m = 2000
-n = 500
-A_inv = test_sub(11, m, n, false, true);
-# B_inv = test_sub(11, i, false, true);
+m = 6188
+n = 13013
+A_inv = test_sub(11, m, n, false, false);
+B_inv = test_sub(11, n, m, false, false);
