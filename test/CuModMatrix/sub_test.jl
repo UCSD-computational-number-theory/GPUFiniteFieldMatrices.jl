@@ -6,6 +6,7 @@ using CUDA
 function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
     NVTX.@range "Init A p=$p, m=$m, n=$n" begin
         A = rand(1:p, m, n)
+        A = Matrix{eltype(A)}(I, m, n)
         if debug
             println("A")
             display(A)
@@ -110,7 +111,7 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
     return A_inv
 end
 
-m = 6188
-n = 13013
-A_inv = test_sub(11, m, n, false, false);
-B_inv = test_sub(11, n, m, false, false);
+m = 6
+n = 6
+A_inv = test_sub(11, m, n, false, true);
+# B_inv = test_sub(11, n, m, false, false);

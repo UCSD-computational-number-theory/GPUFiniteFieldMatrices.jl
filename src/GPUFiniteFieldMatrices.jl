@@ -19,13 +19,8 @@ include("CuModMatrix/kernel_mul/stripe_mul.jl")
 include("KaratsubaMatrices.jl")
 
 include("CuModMatrix/rref_lu_pluq/permutations.jl")
-include("CuModMatrix/rref_lu_pluq/rref_new_kernels.jl")
-include("CuModMatrix/rref_lu_pluq/rref_gpu_type.jl")
-
-include("CuModMatrix/triangular/substitution.jl")
-include("CuModMatrix/triangular/triangular_inverse.jl")
-
 include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
+
 include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
 include("CuModMatrix/triangular/substitution_inplace.jl")
 

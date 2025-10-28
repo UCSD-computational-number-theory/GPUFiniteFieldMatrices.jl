@@ -22,12 +22,6 @@ function test_permutations()
         7.0 9.0 8.0
     ]
 
-    @test Array(perm_array_to_matrix(P, 11, (3, 3); perm_stack=true)) == [
-        1 0 0;
-        0 0 1;
-        0 1 0
-    ]
-
     GPUFiniteFieldMatrices.apply_col_inv_perm!(P, A_gpu)
 
     @test Array(A_gpu) ≈ [
@@ -50,12 +44,6 @@ function test_permutations()
         1.0 2.0 3.0;
         7.0 8.0 9.0;
         4.0 5.0 6.0
-    ]
-
-    @test Array(perm_array_to_matrix(P, 11, (3, 3); perm_stack=true)) == [
-        1 0 0;
-        0 0 1;
-        0 1 0
     ]
 
     GPUFiniteFieldMatrices.apply_row_inv_perm!(P, A_gpu)

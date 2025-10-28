@@ -144,7 +144,7 @@ function _recursive_upper_triangular_inverse_no_copy(
             display(A_12)
         end
 
-        result = N .- mod.(mod.(A_11_inv * A_12, N) * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)], N)
+        result = mod.(N .- mod.(A_11_inv * A_12, N) * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)], N)
         A_inv[col_lower:col_mid, row_mid+1:row_upper] = result
 
         if debug
@@ -170,7 +170,7 @@ function _recursive_upper_triangular_inverse_no_copy(
         A_12 = @view A[row_lower:row_mid, col_mid+1:col_upper]
         A_11_inv = @view A_inv[col_lower:col_mid, row_lower:row_mid]
         A_22_inv = @view A_inv[col_mid+1:col_upper, row_mid+1:row_upper]
-        A_inv[col_lower:col_mid, row_mid+1:row_upper] = N .- mod.(mod.(A_11_inv * A_12, N) * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)], N)
+        A_inv[col_lower:col_mid, row_mid+1:row_upper] = mod.(N .- (mod.(A_11_inv * A_12, N) * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)]), N)
 
         return
     end
@@ -368,6 +368,7 @@ function _recursive_lower_triangular_inverse_no_copy(
         end
 
         A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)]
+        # A_inv[col_mid+1:col_upper, row_mid+1:row_upper] = A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)]
 
         if debug
             println("A_inv:")
@@ -381,7 +382,7 @@ function _recursive_lower_triangular_inverse_no_copy(
             display(A_21)
         end
 
-        result = N .- mod.(mod.(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_21, N) * A_11_inv, N)
+        result = mod.(N .- mod.(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_21, N) * A_11_inv, N)
         A_inv[col_mid+1:col_upper, row_lower:row_mid] = result
 
         if debug
@@ -407,7 +408,7 @@ function _recursive_lower_triangular_inverse_no_copy(
         A_21 = @view A[row_mid+1:row_upper, col_lower:col_mid]
         A_11_inv = @view A_inv[col_lower:col_mid, row_lower:row_mid]
         A_22_inv = @view A_inv[col_mid+1:col_upper, row_mid+1:row_upper]
-        A_inv[col_mid+1:col_upper, row_lower:row_mid] = N .- mod.(mod.(A_22_inv * A_21, N) * A_11_inv, N)
+        A_inv[col_mid+1:col_upper, row_lower:row_mid] = mod.(N .- (mod.(A_22_inv * A_21, N) * A_11_inv), N)
 
         return
     end

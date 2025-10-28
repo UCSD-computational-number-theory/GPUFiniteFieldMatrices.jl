@@ -97,7 +97,7 @@ function test_inplace_basic_operations()
     @test Array(C) == expected
     
     # Test matrix multiplication
-    E = GPUFiniteFieldMatrices.zeros(Float64, 3, 3, modulus)
+    E = GPUFiniteFieldMatrices.zeros(Float32, 3, 3, modulus)
     mul!(E, A, B)
     println("E = A * B (in-place) = ")
     display(E)
@@ -107,8 +107,8 @@ function test_inplace_basic_operations()
     @test Array(E) == convert.(Float32,expected)
     
     # Test copyto!
-    F_data = convert.(Float64,rand(1:(modulus-1),100,100))
-    F = GPUFiniteFieldMatrices.zeros(Float64,100,100,modulus)
+    F_data = convert.(Float32,rand(1:(modulus-1),100,100))
+    F = GPUFiniteFieldMatrices.zeros(Float32,100,100,modulus)
 
     copyto!(F,F_data)
     @test Array(F) == F_data

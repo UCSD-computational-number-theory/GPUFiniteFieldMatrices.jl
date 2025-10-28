@@ -3,6 +3,47 @@ using GPUFiniteFieldMatrices
 using Unroll
 using CUDA
 
+"""
+    mod_inv(p::Int,P::int)
+
+Returns the modular inverse of p mod P.
+Uses Extended Euclidean Algorithm.
+"""
+function mod_inv(p, P)
+
+    # Remark: Since p is prime, we are in a field
+    # And thus an inverse is guaranteed to exist
+    inv = 0
+    new_inv = 1
+    rem = P
+    new_rem = p
+
+    while new_rem != 0
+        quotient = div(rem, new_rem)
+        inv, new_inv = new_inv, inv - quotient * new_inv
+        rem, new_rem = new_rem, rem - quotient * new_rem
+    end
+
+    if inv < 0
+        inv += P
+    end
+
+    return inv
+end
+
+"""
+Kernel to perform PLUQ factorization on a CuModMatrix.
+
+# Arguments
+- `A`: The CuModMatrix to factorize.
+- `debug`: Whether to print debug information.
+
+# Returns
+- `U`: The upper triangular factor.
+- `L`: The lower triangular factor.
+- `Perm_rows`: The array of row permutation tuples.
+- `Perm_cols`: The array of column permutation tuples.
+"""
 function pluq_gpu_kernel(
     A::CuModMatrix;
     debug::Bool = false
@@ -117,7 +158,7 @@ function pluq_gpu_kernel(
 end
 
 """
-Find the pivot value and index in a column of a CuMatrix
+Find the pivot value and index in a column of a CuModMatrix
 below the provided row (inclusive).
 
 If the pivot value is 0, we conclude that the column is all zeros,
@@ -125,8 +166,8 @@ so we swap the column with the column at Perm_col_idx, and update
 Perm_cols. In this case, we return -1, -1.
 
 # Arguments
-- `d_A`: The CuMatrix to find the pivot in.
-- `A_rows`: The number of rows in the CuMatrix.
+- `d_A`: The CuModMatrix to find the pivot in.
+- `A_rows`: The number of rows in the CuModMatrix.
 - `row`: The row to start searching from (inclusive).
 - `col`: The column to search in.
 - `Perm_cols`: The array of column permutations.
@@ -162,12 +203,12 @@ function find_pivot(
 end
 
 """
-Kernel to swap two columns of a CuMatrix.
+Kernel to swap two columns of a CuModMatrix.
 It is meant to be called in blocks of 32 threads,
 with cld(nrows, 32) blocks in total.
 
 # Arguments
-- `d_A`: The CuMatrix to swap columns in.
+- `d_A`: The CuModMatrix to swap columns in.
 - `col1`: The index of the first column to swap.
 - `col2`: The index of the second column to swap.
 
@@ -185,6 +226,25 @@ function swap_cols(d_A, col1, col2)
     return nothing
 end
 
+"""
+Swap two rows of a CuModMatrix and mod them.
+It is meant to be called in blocks of 32 threads,
+with cld(ncols, 32) blocks in total.
+
+# Arguments
+- `d_A`: The CuModMatrix to swap rows in.
+- `d_L`: The CuModMatrix to store the swapped rows.
+- `row`: The index of the row to swap.
+- `prow`: The index of the row to swap with.
+- `p_inv`: The modular inverse of the pivot value.
+- `nrows`: The number of rows in the CuModMatrix.
+- `ncols`: The number of columns in the CuModMatrix.
+- `N`: The modulus.
+- `Perm_rows`: The array of row permutation tuples.
+
+# Returns
+- `nothing`
+"""
 function swap_and_mod(d_A, d_L, row, prow, p_inv, nrows, ncols, N, Perm_rows)
 
     NVTX.@range "Swap d_A rows and mod" begin
@@ -205,15 +265,15 @@ function swap_and_mod(d_A, d_L, row, prow, p_inv, nrows, ncols, N, Perm_rows)
 end
 
 """
-Kernel to swap two rows of a CuMatrix.
+Kernel to swap two rows of a CuModMatrix.
 It is meant to be called in blocks of 32 threads,
 with cld(ncols, 32) blocks in total.
 
 # Arguments
-- `matrix`: The CuMatrix to swap rows in.
+- `matrix`: The CuModMatrix to swap rows in.
 - `row1`: The index of the first row to swap.
 - `row2`: The index of the second row to swap.
-- `ncols`: The number of columns in the CuMatrix.
+- `ncols`: The number of columns in the CuModMatrix.
 
 # Returns
 - `nothing`
@@ -230,15 +290,15 @@ function swap_rows(matrix, row1, row2, ncols)
 end
 
 """
-Kernel to swap two rows of a CuMatrix and mod them.
+Kernel to swap two rows of a CuModMatrix and mod them.
 It is meant to be called in blocks of 32 threads,
 with cld(ncols, 32) blocks in total.
 
 # Arguments
-- `matrix`: The CuMatrix to swap rows in.
+- `matrix`: The CuModMatrix to swap rows in.
 - `row1`: The index of the first row to swap.
 - `row2`: The index of the second row to swap.
-- `ncols`: The number of columns in the CuMatrix.
+- `ncols`: The number of columns in the CuModMatrix.
 - `p_inv`: The modular inverse of the pivot value.
 - `N`: The modulus.
 
@@ -260,6 +320,24 @@ function swap_rows_and_mod(matrix, row1, row2, ncols, p_inv, N)
     return nothing
 end
 
+"""
+Kernel to move a column and zero out the elements below the pivot.
+It is meant to be called in blocks of 32 threads,
+with cld(A_rows - row + 1, 32) blocks in total.
+
+# Arguments
+- `d_A`: The CuModMatrix to move and zero out.
+- `d_L`: The CuModMatrix to store the moved column.
+- `A_rows`: The number of rows in the CuModMatrix.
+- `row`: The row to start moving from.
+- `col`: The column to move.
+- `p_inv`: The modular inverse of the pivot value.
+- `p`: The pivot value.
+- `N`: The modulus.
+
+# Returns
+- `nothing`
+"""
 function move_and_zero_out(d_A, d_L, A_rows, row, col, p_inv, p, N)
 
     NVTX.@range "Set d_L diag to p" begin
@@ -273,11 +351,38 @@ function move_and_zero_out(d_A, d_L, A_rows, row, col, p_inv, p, N)
     return nothing
 end
 
+"""
+Kernel to set an element of a CuModMatrix.
+It is meant to be called in blocks of 1 thread.
+
+# Arguments
+- `matrix`: The CuModMatrix to set the element in.
+- `row`: The index of the row to set the element in.
+- `col`: The index of the column to set the element in.
+- `value`: The value to set the element to.
+
+# Returns
+- `nothing`
+"""
 function set_elem_kernel(matrix, row, col, value)
     matrix[row, col] = value
     return nothing
 end
 
+"""
+Kernel to move a column and zero out the elements below the pivot.
+It is meant to be called in blocks of 32 threads,
+with cld(A_rows - row + 1, 32) blocks in total.
+
+# Arguments
+- `d_A`: The CuModMatrix to move and zero out.
+- `d_L`: The CuModMatrix to store the moved column.
+- `row_start`: The row to start moving from.
+- `col`: The column to move.
+
+# Returns
+- `nothing`
+"""
 function move_col_and_zero_out(d_A, d_L, row_start, col)
 
     row = threadIdx().x + (blockIdx().x - 1) * blockDim().x + row_start
@@ -288,6 +393,22 @@ function move_col_and_zero_out(d_A, d_L, row_start, col)
     return nothing
 end
 
+"""
+Kernel to update the sub matrix in pluq/rref.
+It is meant to be called in blocks of 32 threads,
+with cld(num_rows, 32) blocks in total.
+
+# Arguments
+- `d_A`: The CuModMatrix to update.
+- `d_L`: The CuModMatrix to store the updated sub matrix.
+- `p_row`: The row of the pivot.
+- `p_col`: The column of the pivot.
+- `N`: The modulus.
+- `num_rows`: The number of rows in the CuModMatrix.
+
+# Returns
+- `nothing`
+"""
 function update_sub_matrix_kernel(d_A, d_L, p_row, p_col, N, num_rows)
 
     tx = threadIdx().x

@@ -1,6 +1,6 @@
 
 const TILE_WIDTH = 32
-const DEFAULT_TYPE = UInt8
+const DEFAULT_TYPE = Float32
 
 struct CuModArraySizeMismatchException <: Exception
     message::String
@@ -464,19 +464,7 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
     end
 
     NVTX.@range "Setup PLUQ" begin
-        U, L, Perm_rows, Perm_cols = _setup_PLUQ(A, debug=debug)
-    end
-
-    if debug
-        println("L*U")
-        res = L*U
-        display(res)
-        println("P*L*U*Q")
-        L_perm = apply_row_perm(Perm_rows, L)
-        U_perm = apply_col_perm(Perm_cols, U)
-        res_perm = L_perm*U_perm
-        display(res_perm)
-        return
+        U, L, P, Q = _setup_PLUQ(A, debug=debug)
     end
 
     NVTX.@range "Check if invertible" begin
@@ -486,24 +474,11 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
     end
 
     NVTX.@range "Compute U_inv" begin
-        U_inv = upper_triangular_inverse(U; debug=debug)
+        U_inv = upper_triangular_inverse_no_copy(U; debug=debug)
     end
 
     NVTX.@range "Compute L_inv" begin
-        L_inv = lower_triangular_inverse(L; debug=debug)
-    end
-
-    if debug
-        println("size U_inv: ", size(U_inv))
-        println("size U_inv.data: ", size(U_inv.data))
-        println("size L_inv: ", size(L_inv))
-        println("size L_inv.data: ", size(L_inv.data))
-        println("size A: ", size(A))
-        println("size A.data: ", size(A.data))
-        println("size Perm_rows: ", size(Perm_rows))
-        println("type Perm_rows: ", typeof(Perm_rows))
-        println("size Perm_cols: ", size(Perm_cols))
-        println("type Perm_cols: ", typeof(Perm_cols))
+        L_inv = lower_triangular_inverse_no_copy(L; debug=debug)
     end
 
     if debug
@@ -517,46 +492,29 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
         display(U_inv)
     end
 
-    function _compute_A_inv(U_inv, L_inv, Perm_rows, Perm_cols)
+    function _compute_A_inv(U_inv, L_inv, P, Q)
         NVTX.@range "Apply col perm" begin
-            apply_col_inv_perm!(Perm_rows, U_inv)
+            apply_col_inv_perm!(P, L_inv)
         end
 
         NVTX.@range "Apply row inv perm" begin
-            apply_row_inv_perm!(Perm_cols, L_inv)
+            apply_row_inv_perm!(Q, U_inv)
         end
         
         NVTX.@range "Multiply" begin
-            M = U_inv * L_inv
+            A_inv = U_inv * L_inv
         end
         
-        return M
+        return A_inv
     end
 
-    function _compute_A_inv_new(U_inv, L_inv, Perm_rows, Perm_cols)
-        NVTX.@range "Multiply" begin
-            M = U_inv * L_inv
-        end
-
-        NVTX.@range "Apply col inv perm" begin
-            apply_col_inv_perm!(Perm_rows, M)
-        end
-
-        NVTX.@range "Apply row inv perm" begin
-            apply_row_inv_perm!(Perm_cols, M)
-        end
-        
-        return M
-    end
-
-
-    A_inv = _compute_A_inv_new(U_inv, L_inv, Perm_rows, Perm_cols)
+    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
 
     if debug
-        println("Perm_cols")
-        display(Perm_cols)
-        println("Perm_rows")
-        display(Perm_rows)
+        println("P")
+        display(P)
+        println("Q")
+        display(Q)
         println("A_inv")
         display(A_inv)
         println("A * A_inv")
