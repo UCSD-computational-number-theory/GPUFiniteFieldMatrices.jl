@@ -12,8 +12,8 @@ function test_allocations()
     B = CuModMatrix(B_data,11)
     x = CuModVector(x_data,11)
 
-    C = GPUFiniteFieldMatrices.zeros(Float64,n,n,11)
-    z = GPUFiniteFieldMatrices.zeros(Float64,n,11)
+    C = GPUFiniteFieldMatrices.zeros(Float32,n,n,11)
+    z = GPUFiniteFieldMatrices.zeros(Float32,n,11)
 
     #Note: BenchmarkTools doesn't seem to support tracking gpu allocations
     #as of May 2025

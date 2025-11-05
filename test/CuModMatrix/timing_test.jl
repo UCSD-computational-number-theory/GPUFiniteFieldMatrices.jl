@@ -12,8 +12,8 @@ function test_timings()
     B = CuModMatrix(B_data,11)
     x = CuModVector(x_data,11)
 
-    C = GPUFiniteFieldMatrices.zeros(Float64,n,n,11)
-    z = GPUFiniteFieldMatrices.zeros(Float64,n,11)
+    C = GPUFiniteFieldMatrices.zeros(Float32,n,n,11)
+    z = GPUFiniteFieldMatrices.zeros(Float32,n,11)
 
     #These are mostly meant to be sanity checks to detect bugs,
     #rather than minor performance regressions

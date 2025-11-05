@@ -621,7 +621,7 @@ end
 Creates a vector of zeros of the mod N ring. 
 """
 function zeros(::Type{T}, length::Integer, N::Integer) where T
-    padded_entries = ceil(Int, length / TILE_WIDTH) * TILE_WIDTH
+    padded_entries = length + TILE_WIDTH
     CuModVector(CUDA.zeros(T,padded_entries), N, new_size=(length,))
 end
 
@@ -943,7 +943,7 @@ All elements are reduced modulo new_N.
 """
 function change_modulus(A::CuModArray, new_N::Integer)
     (dataRows,dataCols) = size(A.data)
-    result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows, dataCols, new_N)
+    result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows-TILE_WIDTH, dataCols-TILE_WIDTH, new_N)
     
     if new_N < A.N
         @. result.data = mod(A.data, new_N)
@@ -1044,7 +1044,7 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=no
         ))
     end
     
-    stripe_mul!(z, A, x; P=P)
+    stripe_mul!(z, A, x; N=P)
     return z
 end
 

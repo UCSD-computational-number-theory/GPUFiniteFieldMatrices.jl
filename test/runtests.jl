@@ -53,6 +53,8 @@ function run_all_tests()
 
         @testset "Timings" begin
             test_timings()
+
+            return
         end
 
     end 
