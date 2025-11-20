@@ -932,6 +932,10 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=no
     return z
 end
 
+function CuModcopy(A::CuModArray{T,D}) where {T,D}
+    B = CuModArray{T,D}(Array(A), A.N)
+end
+
 #TODO: addmul! (add and scalar multiply), gemv!, gemm!
 #
 #Note: gemv! and gemm! could be more efficient by incorporating the add into the 

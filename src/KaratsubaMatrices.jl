@@ -54,6 +54,10 @@ end
 const KaratsubaMatrix{T} = KaratsubaArray{T,2}
 const KaratsubaVector{T} = KaratsubaArray{T,1}
 
+function KaratsubaArray(A::AbstractArray{T,D},B::AbstractArray{T,D},N1::Integer,N2::Integer,M::Integer) where {T,D}
+    KaratsubaArray{T,D}(A,B,N1,N2,M)
+end
+
 function KaratsubaMatrix(A::AbstractMatrix{T},B::AbstractMatrix{T}) where T
     KaratsubaArray{T,2}(A,B)
 end
@@ -214,14 +218,16 @@ function MatToKMat(T::Type,A::AbstractArray,M::Integer)
 end
 
 function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
-    if occursin("CuMod", string(typeof(A)))
-        K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,M),GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,M),N1,N2,M)
+    #if occursin("CuMod", string(typeof(A)))
+    K = KaratsubaArray(GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),N1,N2,M)
+    #=
     elseif occursin("Cu", string(typeof(A)))
-        K = KaratsubaMatrix(CUDA.zeros(T,size(A)...),CUDA.zeros(T,size(A)...),N1,N2,M)
+        K = KaratsubaArray(CUDA.zeros(T,size(A)...),CUDA.zeros(T,size(A)...),N1,N2,M)
         M = Int(M)
     else
-        K = KaratsubaMatrix(zeros(T,size(A)...),zeros(T,size(A)...),N1,N2,M)
+        K = KaratsubaArray(zeros(T,size(A)...),zeros(T,size(A)...),N1,N2,M)
     end
+    =#
     #=
     K.data2 .= mod.(trunc.(A./M),N2)
     K.data1 .= mod.(A - Int(K.M)*K.data2,N1)
@@ -233,7 +239,7 @@ function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Int
     divide_elements!(K.data2,A,N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,N2)
     LinearAlgebra.mul!(K.data1,K.data2,Int(N1))
-    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,M)
+    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,N1)
     K
 end
@@ -245,7 +251,7 @@ end
 
 function KaratsubaZeros(T,rows,cols,N1,N2,M,use_gpu)
     if use_gpu == true
-        K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(T,rows,cols,M),GPUFiniteFieldMatrices.zeros(T,rows,cols,M),N1,N2,M)
+        K = KaratsubaMatrix(GPUFiniteFieldMatrices.zeros(T,rows,cols,N1),GPUFiniteFieldMatrices.zeros(T,rows,cols,N1),N1,N2,M)
     else
         K = KaratsubaMatrix(zeros(T,rows,cols),zeros(T,rows,cols),N1,N2,M)
     end
@@ -254,7 +260,7 @@ end
 
 function KaratsubaZeros(T,length,N1,N2,M,use_gpu)
     if use_gpu == true
-        K = KaratsubaVector(GPUFiniteFieldMatrices.zeros(T,length,M),GPUFiniteFieldMatrices.zeros(T,length,M),N1,N2,M)
+        K = KaratsubaVector(GPUFiniteFieldMatrices.zeros(T,length,N1),GPUFiniteFieldMatrices.zeros(T,length,N1),N1,N2,M)
     else
         K = KaratsubaVector(zeros(T,length),zeros(T,length),N1,N2,M)
     end
@@ -262,7 +268,7 @@ function KaratsubaZeros(T,length,N1,N2,M,use_gpu)
 end
 
 function initialize_plan!(K::KaratsubaArray)
-    K.plan = GPUFiniteFieldMatrices.zeros(eltype(K.data1),size(K.data1)...,K.M)
+    K.plan = GPUFiniteFieldMatrices.zeros(eltype(K.data1),size(K.data1)...,K.N1)
 end
 
 import Base: +, -, *
@@ -439,4 +445,12 @@ end
 function divide_elements!(B::CuModArray, A::CuModArray, N::Integer)
     @. B.data = div(A.data,N)
     return A
+end
+
+function Karatsubacopy(A::KaratsubaArray{T,D}) where {T,D}
+    B = KaratsubaArray{T,D}(A.data1,A.data2,A.N1,A.N2,A.N1*A.N2)
+    if !(A.plan==nothing)
+        initialize_plan!(B)
+    end
+    B
 end
