@@ -198,6 +198,20 @@ function Base.Array(K::KaratsubaArray)
     A
 end
 
+function Base.copy!(B::KaratsubaArray, A::KaratsubaArray)
+    GPUFiniteFieldMatrices.copy!(B.data1,A.data1)
+    GPUFiniteFieldMatrices.copy!(B.data2,A.data2)
+    if A.plan != nothing && B.plan == nothing
+        initialize_plan!(B)
+    end
+    return B
+end
+
+function zero!(A::KaratsubaArray)
+    GPUFiniteFieldMatrices.zero!(A.data1)
+    GPUFiniteFieldMatrices.zero!(A.data2)
+end
+
 function KMatToMat(T::Type,K::KaratsubaArray)
     A = Base.zeros(T,size(K.data1)...)
     A = K.data1 + K.N1*K.data2
