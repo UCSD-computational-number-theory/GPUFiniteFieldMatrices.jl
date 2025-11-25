@@ -1,4 +1,3 @@
-using NVTX
 using GPUFiniteFieldMatrices
 using Unroll
 using CUDA
@@ -67,7 +66,7 @@ function pluq_gpu_kernel(
         end
     end
 
-    NVTX.@range "Init PLUQ d_A, d_L, Perm_rows, Perm_cols" begin
+    # NVTX.@range "Init PLUQ d_A, d_L, Perm_rows, Perm_cols" begin
         N = A.N
 
         A_padded_rows = size(A.data, 1)
@@ -78,7 +77,7 @@ function pluq_gpu_kernel(
 
         Perm_rows = Array{Tuple{Int,Int}}(undef, 0)
         Perm_cols = Array{Tuple{Int,Int}}(undef, 0)
-    end
+    # end
 
     rows, cols = size(A.data)
     rows -= TILE_WIDTH
@@ -94,7 +93,7 @@ function pluq_gpu_kernel(
 
         _print_plup_debug("Iteration $row, $col start")
 
-        NVTX.@range "Find pivot col" begin
+        # NVTX.@range "Find pivot col" begin
             while true
                 pivot_val, pivot_idx = find_pivot(d_A, rows, row, col, Perm_cols, Perm_col_idx)
 
@@ -107,31 +106,31 @@ function pluq_gpu_kernel(
                     end
                 end
             end
-        end
+        # end
 
         if col > cols
             break
         end
 
-        NVTX.@range "Mod Inverse" begin
+        # NVTX.@range "Mod Inverse" begin
             pivot_val_inv = mod_inv(pivot_val, N)
-        end
+        # end
 
-        NVTX.@range "Swap and mod" begin
+        # NVTX.@range "Swap and mod" begin
             swap_and_mod(d_A, d_L, row, pivot_idx+row-1, pivot_val_inv, rows, cols, N, Perm_rows)
-        end
+        # end
 
         _print_plup_debug("Iteration $row, $col swapped and modded")
 
-        NVTX.@range "Move and zero out" begin
+        # NVTX.@range "Move and zero out" begin
             move_and_zero_out(d_A, d_L, rows, row, col, pivot_val_inv, pivot_val, N)
-        end
+        # end
 
         _print_plup_debug("Iteration $row, $col moved and zeroed out")
 
-        NVTX.@range "Update sub matrix" begin
+        # NVTX.@range "Update sub matrix" begin
             @cuda blocks=cld(cols - col + 1, TILE_WIDTH) threads=TILE_WIDTH shmem=TILE_WIDTH*sizeof(DEFAULT_TYPE) update_sub_matrix_kernel(d_A, d_L, row, col, N, rows)
-        end
+        # end
 
         _print_plup_debug("Iteration $row, $col updated sub matrix")
 
@@ -142,10 +141,10 @@ function pluq_gpu_kernel(
 
     end
 
-    NVTX.@range "End PLUQ" begin
+    # NVTX.@range "End PLUQ" begin
         U = CuModMatrix(d_A, N; new_size=(rows,cols))
         L = CuModMatrix(d_L, N; new_size=(rows,rows))
-    end
+    # end
 
     return (
         U, 
@@ -190,12 +189,12 @@ function find_pivot(
     pivot_val, pivot_idx = findmax(col_view)
 
     if pivot_val == 0
-        NVTX.@range "Swap cols" begin
+        # NVTX.@range "Swap cols" begin
             @cuda blocks=cld(A_rows, TILE_WIDTH) threads=TILE_WIDTH swap_cols(d_A, col, Perm_col_idx)
-        end
-        NVTX.@range "Update Perm_cols" begin
+        # end
+        # NVTX.@range "Update Perm_cols" begin
             push!(Perm_cols, (col, Perm_col_idx))
-        end
+        # end
         return -1, -1
     end
 
@@ -247,19 +246,19 @@ with cld(ncols, 32) blocks in total.
 """
 function swap_and_mod(d_A, d_L, row, prow, p_inv, nrows, ncols, N, Perm_rows)
 
-    NVTX.@range "Swap d_A rows and mod" begin
+    # NVTX.@range "Swap d_A rows and mod" begin
         @cuda blocks=cld(ncols, TILE_WIDTH) threads=TILE_WIDTH swap_rows_and_mod(d_A, prow, row, ncols, p_inv, N)
-    end
+    # end
 
-    NVTX.@range "Swap d_L rows" begin
+    # NVTX.@range "Swap d_L rows" begin
         @cuda blocks=cld(nrows, TILE_WIDTH) threads=TILE_WIDTH swap_rows(d_L, row, prow, nrows)
-    end
+    # end
 
-    NVTX.@range "Update Perm_rows" begin
+    # NVTX.@range "Update Perm_rows" begin
         if row != prow
             push!(Perm_rows, (row, prow))
         end 
-    end
+    # end
 
     return nothing
 end
@@ -340,13 +339,13 @@ with cld(A_rows - row + 1, 32) blocks in total.
 """
 function move_and_zero_out(d_A, d_L, A_rows, row, col, p_inv, p, N)
 
-    NVTX.@range "Set d_L diag to p" begin
+    # NVTX.@range "Set d_L diag to p" begin
         @cuda blocks=1 threads=1 set_elem_kernel(d_L, row, col, p)
-    end
+    # end
 
-    NVTX.@range "Move col and zero out" begin
+    # NVTX.@range "Move col and zero out" begin
         @cuda blocks=cld(A_rows - row + 1, TILE_WIDTH) threads=TILE_WIDTH move_col_and_zero_out(d_A, d_L, row, col)
-    end
+    # end
 
     return nothing
 end

@@ -7,11 +7,10 @@ using BenchmarkTools
 using CSV
 using DelimitedFiles
 using Unroll
-using NVTX
 
 const DEBUG = false
 
-include("CuModMatrix/gpu_matrix_mod_N/gpu_mat.jl")
+include("CuModMatrix/CuModMatrix.jl")
 
 include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
 include("CuModMatrix/kernel_mul/mat_mul_ops.jl")

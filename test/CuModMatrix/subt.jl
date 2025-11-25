@@ -2,25 +2,25 @@ using GPUFiniteFieldMatrices
 using NVTX
 
 function test_sub(p, i)
-    NVTX.@range "Init A p=$p, i=$i" begin
+    # NVTX.@range "Init A p=$p, i=$i" begin
         A = rand(1:p, i, i)
-    end
+    # end
 
-    NVTX.@range "Init d_A p=$p, i=$i" begin
+    # NVTX.@range "Init d_A p=$p, i=$i" begin
         d_A = CuModMatrix(A, p)
-    end
+    # end
 
-    NVTX.@range "Setup PLUQ p=$p, i=$i" begin
+    # NVTX.@range "Setup PLUQ p=$p, i=$i" begin
         U, L, P, Q = GPUFiniteFieldMatrices._setup_PLUQ(d_A; debug=false)
-    end
+    # end
 
-    NVTX.@range "Lower triangular inverse p=$p, i=$i" begin
+    # NVTX.@range "Lower triangular inverse p=$p, i=$i" begin
         L_inv = forward_sub_gpu_type_32(L, 0, 0)
-    end
+    # end
 
-    NVTX.@range "Upper triangular inverse p=$p, i=$i" begin
+    # NVTX.@range "Upper triangular inverse p=$p, i=$i" begin
         U_inv = backward_sub_gpu_type_32(U, 0, 0)
-    end
+    # end
 
     println("A")
     display(A)

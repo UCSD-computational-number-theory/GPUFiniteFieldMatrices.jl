@@ -1,23 +1,22 @@
 using GPUFiniteFieldMatrices
-using NVTX
 using LinearAlgebra
 using CUDA
 
 function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
-    NVTX.@range "Init A p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Init A p=$p, m=$m, n=$n" begin
         A = rand(1:p, m, n)
         A = Matrix{eltype(A)}(I, m, n)
         if debug
             println("A")
             display(A)
         end
-    end
+    # end
 
-    NVTX.@range "Init d_A p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Init d_A p=$p, m=$m, n=$n" begin
         d_A = CuModMatrix(A, p)
-    end
+    # end
 
-    NVTX.@range "Setup PLUQ p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Setup PLUQ p=$p, m=$m, n=$n" begin
         U, L, P, Q = GPUFiniteFieldMatrices._setup_PLUQ(d_A; debug=false)
         if debug
             println("U")
@@ -47,9 +46,9 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
             end
             @assert Array(L_copy * U_copy) ≈ Array(d_A)
         end
-    end
+    # end
 
-    NVTX.@range "Lower triangular inverse p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Lower triangular inverse p=$p, m=$m, n=$n" begin
         L_inv = GPUFiniteFieldMatrices.lower_triangular_inverse_no_copy(L, debug=debug)
         if debug
             println("L_inv")
@@ -57,9 +56,9 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
             println("L_inv * L")
             display(L_inv * L)
         end
-    end
+    # end
 
-    NVTX.@range "Upper triangular inverse p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Upper triangular inverse p=$p, m=$m, n=$n" begin
         U_inv = GPUFiniteFieldMatrices.upper_triangular_inverse_no_copy(U, debug=debug)
         if debug
             println("U_inv")
@@ -67,25 +66,25 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
             println("U_inv * U")
             display(U_inv * U)
         end
-    end
+    # end
 
-    NVTX.@range "Apply col inv perm p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Apply col inv perm p=$p, m=$m, n=$n" begin
         GPUFiniteFieldMatrices.apply_col_inv_perm!(P, L_inv)
         if debug
             println("L_inv after col inv perm")
             display(L_inv)
         end
-    end
+    # end
 
-    NVTX.@range "Apply row inv perm p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Apply row inv perm p=$p, m=$m, n=$n" begin
         GPUFiniteFieldMatrices.apply_row_inv_perm!(Q, U_inv)
         if debug
             println("U_inv after row inv perm")
             display(U_inv)
         end
-    end
+    # end
 
-    NVTX.@range "Multiply p=$p, m=$m, n=$n" begin
+    # NVTX.@range "Multiply p=$p, m=$m, n=$n" begin
         # (PLUQ)^{-1} = Q^{-1} U^{-1} L^{-1} P^{-1}
         # 
         A_inv = U_inv * L_inv
@@ -98,7 +97,7 @@ function test_sub(p, m, n, debug::Bool=false, assert::Bool=false)
             display(d_A * A_inv)
             println("")
         end
-    end
+    # end
 
     if assert
         if m >= n

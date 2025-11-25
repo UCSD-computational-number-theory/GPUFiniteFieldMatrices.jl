@@ -9,12 +9,10 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-NVTX = "5da4648a-3479-48b8-97b9-01cb529c0a1f"
 Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
 [compat]
 BenchmarkTools = "1.5.0"
 CSV = "0.10.15"
 DelimitedFiles = "1.9.1"
-NVTX = "1.0.1"
 Unroll = "0.1.0"

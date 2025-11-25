@@ -463,23 +463,23 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
         display(A)
     end
 
-    NVTX.@range "Setup PLUQ" begin
+    # NVTX.@range "Setup PLUQ" begin
         U, L, P, Q = _setup_PLUQ(A, debug=debug)
-    end
+    # end
 
-    NVTX.@range "Check if invertible" begin
+    # NVTX.@range "Check if invertible" begin
         if !_is_invertible(U)
             return false, nothing
         end
-    end
+    # end
 
-    NVTX.@range "Compute U_inv" begin
+    # NVTX.@range "Compute U_inv" begin
         U_inv = upper_triangular_inverse_no_copy(U; debug=debug)
-    end
+    # end
 
-    NVTX.@range "Compute L_inv" begin
+    # NVTX.@range "Compute L_inv" begin
         L_inv = lower_triangular_inverse_no_copy(L; debug=debug)
-    end
+    # end
 
     if debug
         println("L")
@@ -493,17 +493,17 @@ function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
     end
 
     function _compute_A_inv(U_inv, L_inv, P, Q)
-        NVTX.@range "Apply col perm" begin
+        # NVTX.@range "Apply col perm" begin
             apply_col_inv_perm!(P, L_inv)
-        end
+        # end
 
-        NVTX.@range "Apply row inv perm" begin
+        # NVTX.@range "Apply row inv perm" begin
             apply_row_inv_perm!(Q, U_inv)
-        end
+        # end
         
-        NVTX.@range "Multiply" begin
+        # NVTX.@range "Multiply" begin
             A_inv = U_inv * L_inv
-        end
+        # end
         
         return A_inv
     end
