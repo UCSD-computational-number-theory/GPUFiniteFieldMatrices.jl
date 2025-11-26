@@ -6,17 +6,22 @@ using IterTools
 using BenchmarkTools
 using CSV
 using DelimitedFiles
+using Unroll
 
 const DEBUG = false
 
-include("CuModMatrix/gpu_matrix_mod_N/gpu_mat.jl")
-include("CuModMatrix/rref_lu_pluq/rref_new_kernels.jl")
-include("CuModMatrix/rref_lu_pluq/rref_gpu_type.jl")
+include("CuModMatrix/CuModMatrix.jl")
+
 include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
 include("CuModMatrix/kernel_mul/mat_mul_ops.jl")
-include("CuModMatrix/hensel_lifting/hensel.jl")
 include("CuModMatrix/kernel_mul/stripe_mul.jl")
 include("KaratsubaMatrices.jl")
+
+include("CuModMatrix/rref_lu_pluq/permutations.jl")
+include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
+
+include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
+include("CuModMatrix/triangular/substitution_inplace.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
@@ -35,11 +40,17 @@ export mod_elements!, fill!
 #     (since they conflict with AbstractAlgebra
 
 # Export GPU operations
-export rref_gpu_type, lu_gpu_type, plup_gpu_type
+export rref_gpu_type, lu_gpu_type, pluq_gpu_type
 export mat_mul_gpu_type, mat_mul_type_inplace!
 export perm_array_to_matrix
 export backward_sub_gpu_type, forward_sub_gpu_type
 export is_invertible, inverse, is_invertible_with_inverse
 export perm_array_to_matrix
+export apply_col_perm!, apply_row_perm!
+export upper_triangular_inverse, lower_triangular_inverse
+export mod_inv
+export pluq_gpu_kernels
+export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
+export forward_sub_gpu_type_32, backward_sub_gpu_type_32
 
 end

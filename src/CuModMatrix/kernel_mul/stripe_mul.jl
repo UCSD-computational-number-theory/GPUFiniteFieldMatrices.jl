@@ -57,7 +57,9 @@ Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
 #the ".data" stuff won't work until then
-function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; P=nothing)
+function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=nothing)
+#TODO: add new signature that takes in custom M and N (and can copy the old one into new one)
+# so we can update the modulus but use the old bound for coeffs.
 
     if A.N != z.N || z.N != z.N 
         throw(ArgumentError("Mismatched modulus in matmul"))
@@ -69,10 +71,12 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; P=nothing)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
 
-    if P == nothing
-        M = find_max_stripe_ops(eltype(A.data),A.N)
-    else
-        M = find_max_stripe_ops(eltype(A.data),P)
+    if M == nothing
+        if N == nothing
+            M = find_max_stripe_ops(eltype(A.data),A.N)
+        else
+            M = find_max_stripe_ops(eltype(A.data),N)
+        end
     end
 
     if M < 1
@@ -123,7 +127,7 @@ end
 
 Matrix multiplication mod N based on stripes.
 """
-function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; P=nothing)
+function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=nothing)
 
     if A.N != B.N || B.N != C.N 
         throw(ArgumentError("Mismatched modulus in matmul"))
@@ -135,10 +139,17 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; P=nothing)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
 
-    if P == nothing
-        M = find_max_stripe_ops(eltype(A.data),A.N)
-    else
-        M = find_max_stripe_ops(eltype(A.data),P)
+    #TODO
+    # basicallty adapt a new P which is the actual maxium, not the modulus
+    # Be careful not to mod by P though
+    # Also update all the versions of stripe_mul!
+
+    if M == nothing
+        if N == nothing
+            M = find_max_stripe_ops(eltype(A.data),A.N)
+        else
+            M = find_max_stripe_ops(eltype(A.data),N)
+        end
     end
 
     if M < 1
@@ -147,7 +158,11 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; P=nothing)
                        
     summed_size = cols(A)#size(A,2)
 
-    num_stripes = div(summed_size,M) + 1
+    if N == nothing
+        num_stripes = div(summed_size,M) + 1
+    else
+        num_stripes = 1
+    end
 
     if num_stripes == 1
         mul!(C.data,A.data,B.data)

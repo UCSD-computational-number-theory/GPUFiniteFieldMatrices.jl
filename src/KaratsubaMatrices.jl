@@ -92,7 +92,7 @@ function zerosplan(T::Type,rows::Integer,cols::Integer,N1::Integer,N2::Integer,u
     end
 end
 
-function find_max_ops(type, N)
+function find_max_ops_karatsuba(type, N)
 
     if occursin("Float", string(type))
         bits_dict = Dict("64" => 51, "32" => 22, "16" => 9)

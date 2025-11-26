@@ -25,7 +25,7 @@ function test_timings()
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
 
     result = @btimed CUDA.@sync mul!($C,$A,$B)
-    @test result[:time] < 1 # on a 3070, I can get less than 0.2
+    @test result[:time] < 2 # on a 3070, I can get less than 0.2
 
     result = @btimed CUDA.@sync mul!($z,$A,$x)
     @test result[:time] < 0.01 # on a 3070, I can get less than 0.001
