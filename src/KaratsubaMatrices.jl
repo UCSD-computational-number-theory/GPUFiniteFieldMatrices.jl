@@ -160,15 +160,15 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     C.data2 .= C.data2 - C.data1
     C.data2 .= C.data2 - A.data2*B.data2
     =#
-    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2,A.N1^2)
-    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2,B.N1^2)
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1)
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=A.N1)
-    GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
+    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2,2*A.N1)
+    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2,2*B.N1)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1^2,maxopsOverride=false)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=((4*A.N1)^2),maxopsOverride=false)
+    #GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
     divide_elements!(C.plan,C.data1,A.N1)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,B.N1^2)
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan,B.N1^2)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,(4*A.N1)^2)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1,maxopsOverride=false)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan,(4*A.N1)^2)
     GPUFiniteFieldMatrices.mod_elements!(C.data1,C.N1)
     GPUFiniteFieldMatrices.add!(C.data2,C.data2,C.plan)
     GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
@@ -193,8 +193,22 @@ end
 
 #Converts KMat to Mat
 function Base.Array(K::KaratsubaArray)
-    A = Base.zeros(eltype(K.data1),size(K.data1)...)
-    A = K.data1 + K.N1*K.data2
+    if K.N1*K.N2 < BigInt(2)^(64)
+        type = Int64
+    else
+        type = Int128
+    end
+    A = Base.zeros(Int128,size(K.data1)...)
+    cpudata1 = Base.zeros(eltype(K.data1),size(K.data1)...)
+    cpudata2 = Base.zeros(eltype(K.data1),size(K.data1)...)
+    inds = CartesianIndices(K.data1)
+    copyto!(cpudata1,inds,K.data1.data,inds)
+    copyto!(cpudata2,inds,K.data2.data,inds)
+    intdata1 = convert.(type,cpudata1)
+    intdata2 = convert.(type,cpudata2)
+    A .= intdata1 .+ K.N1.*intdata2
+    #scalar_multiply!(A,K.data2,K.N1)
+    #add!(A,A,K.data1)
     A
 end
 
@@ -341,6 +355,9 @@ function *(A::KaratsubaArray, B::KaratsubaArray)
     K
 end
 
+"""
+This is not safe if K == B, but it is safe if K == A.
+"""
 function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.M != B.M) || (A.M != K.M)
         error("Matrices must have the same modulus m")
@@ -462,7 +479,7 @@ function divide_elements!(B::CuModArray, A::CuModArray, N::Integer)
 end
 
 function Karatsubacopy(A::KaratsubaArray{T,D}) where {T,D}
-    B = KaratsubaArray{T,D}(A.data1,A.data2,A.N1,A.N2,A.N1*A.N2)
+    B = KaratsubaArray{T,D}(CuModcopy(A.data1),CuModcopy(A.data2),copy(A.N1),copy(A.N2),A.N1*A.N2)
     if !(A.plan==nothing)
         initialize_plan!(B)
     end

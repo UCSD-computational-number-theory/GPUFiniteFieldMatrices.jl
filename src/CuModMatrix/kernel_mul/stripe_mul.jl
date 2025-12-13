@@ -57,7 +57,7 @@ Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
 #the ".data" stuff won't work until then
-function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=nothing)
+function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=nothing, maxopsOverride=true)
 #TODO: add new signature that takes in custom M and N (and can copy the old one into new one)
 # so we can update the modulus but use the old bound for coeffs.
 
@@ -70,13 +70,21 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     elseif eltype(A.data) != eltype(z.data) || eltype(z.data) != eltype(x.data)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
-
-    if M == nothing
-        if N == nothing
-            M = find_max_stripe_ops(eltype(A.data),A.N)
-        else
-            M = find_max_stripe_ops(eltype(A.data),N)
+    
+    if maxopsOverride == true
+        if M == nothing
+            if N == nothing
+                M = find_max_stripe_ops(eltype(A.data),A.N)
+            else
+                M = find_max_stripe_ops(eltype(A.data),N)
+            end
         end
+    else
+        M = find_max_stripe_ops(eltype(A.data),A.N)
+    end
+
+    if N==nothing
+        N = z.N
     end
 
     if M < 1
@@ -89,7 +97,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
 
     if num_stripes == 1
         mul!(z.data,A.data,x.data)
-        z.data .%= z.N
+        z.data .%= N
         return
     end
 
@@ -99,7 +107,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
     CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,0,z.data)
-    z.data .%= z.N
+    z.data .%= N
 
     i += 1
 
@@ -108,7 +116,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         A_temp = @view A.data[:,range]
         x_temp = @view x.data[range]
         CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-        z.data .%= z.N
+        z.data .%= N
 
         i += 1
     end
@@ -118,7 +126,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
     CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-    z.data .%= z.N
+    z.data .%= N
 
 end
 

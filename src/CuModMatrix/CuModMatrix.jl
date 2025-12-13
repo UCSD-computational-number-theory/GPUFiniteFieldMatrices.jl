@@ -1026,7 +1026,7 @@ end
 
 In-place matrix-vector multiplication: z = A * x mod N.
 """
-function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=nothing)
+function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=nothing, maxopsOverride=true)
     
     if (A.N != z.N || A.N != x.N)
         throw(CuModArrayModulusMismatchException(
@@ -1044,12 +1044,12 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=no
         ))
     end
     
-    stripe_mul!(z, A, x; N=P)
+        stripe_mul!(z, A, x; N=P, maxopsOverride=maxopsOverride)
     return z
 end
 
 function CuModcopy(A::CuModArray{T,D}) where {T,D}
-    B = CuModArray{T,D}(Array(A), A.N)
+    B = CuModArray{T,D}(copy(Array(A)), copy(A.N))
 end
 
 #TODO: addmul! (add and scalar multiply), gemv!, gemm!
