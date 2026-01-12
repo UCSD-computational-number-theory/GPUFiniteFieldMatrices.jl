@@ -543,6 +543,18 @@ function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     K
 end
 
+function karatsuba_scalar_multiply_kernel_1d!(Bdata1,Bdata2,Adata1,Adata2,s,N1,N2)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+    Bdata2[i] = (Adata1[i]*s) % (N1^2)
+    Bdata2[i] = div(Bdata2[i], N1)
+    Bdata1[i] = (Adata2[i]*s) % N2
+    Bdata2[i] = (Bdata2[i] + Bdata1[i]) % N2
+    Bdata1[i] = (Adata1[i] * s) % N1
+
+    nothing
+end
+
 function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
     if A.M != B.M
         error("Matrices must have the same modulus m")
@@ -550,64 +562,80 @@ function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
     if size(A.data1) != size(B.data1)
         error("Matrix dimensions must match")
     end
+
+    # LinearAlgebra.mul!(B.data2,A.data1,s,A.N1^2)
+    # divide_elements!(B.data2,B.data2,A.N1)
+    # LinearAlgebra.mul!(B.data1,A.data2,s,A.N2)
+    # GPUFiniteFieldMatrices.add!(B.data2,B.data2,B.data1)
+    # LinearAlgebra.mul!(B.data1,A.data1,s,A.N1)
+
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_scalar_multiply_kernel_1d!(B.data1.data,
+                                                                    B.data2.data,
+                                                                    A.data1.data,
+                                                                    A.data2.data,
+                                                                    s,
+                                                                    A.N1,
+                                                                    A.N2)
+
     #=
     B.data2 .= mod.(trunc.((s*A.data1)/A.M),A.N2)
     B.data1 .= mod.(s*A.data1 - B.M*B.data2,A.N1)
     B.data2 .= mod.(B.data2 + s*A.data2,A.N2)
     =#
-    LinearAlgebra.mul!(B.data2,A.data1,s,A.N1^2)
-    divide_elements!(B.data2,B.data2,A.N1)
-    LinearAlgebra.mul!(B.data1,A.data2,s,A.N2)
-    GPUFiniteFieldMatrices.add!(B.data2,B.data2,B.data1)
-    LinearAlgebra.mul!(B.data1,A.data1,s,A.N1)
     B
 end
 
 
-# function karatsuba_negate_kernel_2d!(Kdata1,Kdata2,Adata1,Adata2,N1,N2,M)
-#     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-#     j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+function karatsuba_negate_kernel_1d!(Kdata1,Kdata2,Adata1,Adata2,N1,N2,M)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
 
-#     # Kdata2[i,j] = 0
-#     Kdata2[i,j] = (Kdata2[i,j] + N1) % (2*N1)
-#     Kdata2[i,j] = (Kdata2[i,j] - Adata1[i,j]) % (2*N1)
+    # Kdata2[i] = 0
+    Kdata2[i] = (Kdata2[i] + N1) % (2*N1)
+    Kdata2[i] = (Kdata2[i] - Adata1[i]) % (2*N1)
 
-#     Kdata2[i,j] = div(Kdata2[i,j], N1)
-#     Kdata1[i,j] = (Kdata2[i,j] * N1) % (M^2)
-#     Kdata1[i,j] = (Kdata1[i,j] + Adata1[i,j]) % (M^2)
-#     Kdata1[i,j] = (-K.data1[i,j]) % N1
+    Kdata2[i] = div(Kdata2[i], N1)
+    Kdata1[i] = (Kdata2[i] * N1) % (M^2)
+    Kdata1[i] = (Kdata1[i] + Adata1[i]) % (M^2)
+    Kdata1[i] = (-Kdata1[i]) % N1
 
-#     # Kdata1[i,j] %= N1
+    # Kdata1[i] %= N1
 
-#     Kdata2[i,j] = (Kdata2[i,j] + A.N2) % (M^2)
-#     Kdata2[i,j] = (Kdata2[i,j] - 1) % (M^2)
-#     Kdata2[i,j] = (Kdata2[i,j] - Adata2[i,j]) % M
-#     Kdata2[i,j] %= N2
+    Kdata2[i] = (Kdata2[i] + N2) % (M^2)
+    Kdata2[i] = (Kdata2[i] - 1) % (M^2)
+    Kdata2[i] = (Kdata2[i] - Adata2[i]) % M
+    Kdata2[i] %= N2
 
-#     nothing
-# end
+    nothing
+end
 
-# function negate!(K::KaratsubaMatrix, A::KaratsubaMatrix)
+function negate!(K::KaratsubaArray, A::KaratsubaArray)
 
-#     tw = GPUFiniteFieldMatrices.TILE_WIDTH
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
 
-#     threads = (tw,tw)
+    totalsize = length(A.data1.data)
 
-#     totalsize = size(A.data1.data)
+    threads = tw
+    blocks = totalsize ÷ tw
 
-#     blocks = (totalsize[1] ÷ threads[1], totalsize[2] ÷ threads[2])
-
-#     @cuda threads=threads blocks=blocks karatsuba_negate_kernel_2d!(K.data1.data,
-#                                                                  K.data2.data,
-#                                                                  A.data1.data,
-#                                                                  A.data2.data,
-#                                                                  A.N1,
-#                                                                  A.N2,
-#                                                                 A.M)
+    @cuda threads=threads blocks=blocks karatsuba_negate_kernel_1d!(K.data1.data,
+                                                                 K.data2.data,
+                                                                 A.data1.data,
+                                                                 A.data2.data,
+                                                                 A.N1,
+                                                                 A.N2,
+                                                                A.M)
 
 
-#     K
-# end
+    K
+end
 
 function negate!(K::KaratsubaArray,A::KaratsubaArray)
     #=
