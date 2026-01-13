@@ -411,50 +411,50 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     K
 end
 
-"""
-This is a fallback implementation, and shouldn't be used
-unless the dimension is greater than or equal to 3.
+#"""
+#This is a fallback implementation, and shouldn't be used
+#unless the dimension is greater than or equal to 3.
 
-This is not safe if K == B, but it is safe if K == A.
-"""
-function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
-    if (A.M != B.M) || (A.M != K.M)
-        error("Matrices must have the same modulus m")
-    end
-    if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
-        error("Matrix dimensions must match")
-    end
-    if (A.plan == nothing) || (K.plan == nothing)
-        error("Must initialize plans first before using fallback implementation")
-    end
-    #=
-    K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
-    K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
-    K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
-    =#
+#This is not safe if K == B, but it is safe if K == A.
+#"""
+#function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
+#    if (A.M != B.M) || (A.M != K.M)
+#        error("Matrices must have the same modulus m")
+#    end
+#    if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
+#        error("Matrix dimensions must match")
+#    end
+#    if (A.plan == nothing) || (K.plan == nothing)
+#        error("Must initialize plans first before using fallback implementation")
+#    end
+#    #=
+#    K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
+#    K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
+#    K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
+#    =#
     
-    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1,2*A.N1)
-    divide_elements!(K.plan,K.plan,A.N1)
-    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2,2*A.N2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2,2*A.N2)
-    LinearAlgebra.mul!(K.plan,K.plan,A.N1,A.N1^2)
-    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan,B.N1^2)
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan,A.N1^2)
-    #=
-    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
-    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
-    =#
-    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
-    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
-    #=
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
-    GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
-    GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
-    =#
+#    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1,2*A.N1)
+#    divide_elements!(K.plan,K.plan,A.N1)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2,2*A.N2)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2,2*A.N2)
+#    LinearAlgebra.mul!(K.plan,K.plan,A.N1,A.N1^2)
+#    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan,B.N1^2)
+#    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan,A.N1^2)
+#    #=
+#    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
+#    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+#    =#
+#    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+#    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+#    #=
+#    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
+#    GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
+#    GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
+#    =#
 
-    K
-end
+#    K
+#end
 
 function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.M != B.M) || (A.M != K.M)
