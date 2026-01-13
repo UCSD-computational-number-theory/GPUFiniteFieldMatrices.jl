@@ -15,7 +15,9 @@ include("CuModMatrix/CuModMatrix.jl")
 include("CuModMatrix/kernel_mul/mat_mul_gpu_direct.jl")
 include("CuModMatrix/kernel_mul/mat_mul_ops.jl")
 include("CuModMatrix/kernel_mul/stripe_mul.jl")
-include("KaratsubaMatrices.jl")
+
+include("KaratsubaMatrix/KaratsubaMatrix.jl")
+include("KaratsubaMatrix/KaratsubaKernels.jl")
 
 include("CuModMatrix/rref_lu_pluq/permutations.jl")
 include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
