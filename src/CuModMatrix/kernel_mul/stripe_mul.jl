@@ -49,6 +49,10 @@ function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModM
     mod!(C.data, C.data, C.N)
 end
 
+const ONE_PTR_F64 = CUDA.CUBLAS.CuRef(Float64(1.0))
+const ZERO_PTR_F64 = CUDA.CUBLAS.CuRef(Float64(0.0))
+const ONE_PTR_F32 = CUDA.CUBLAS.CuRef(Float32(1.0))
+const ZERO_PTR_F32 = CUDA.CUBLAS.CuRef(Float32(0.0))
 
 """
     stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
@@ -91,6 +95,17 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         throw(ArgumentError("cannot perform a single multiplication for modulus $(A.N) with datatype $(eltype(A.data))"))
     end
 
+    if eltype(A.data) == Float64
+        one_ptr = ONE_PTR_F64
+        zero_ptr = ZERO_PTR_F64
+    elseif eltype(A.data) == Float32
+        one_ptr = ONE_PTR_F32
+        zero_ptr = ZERO_PTR_F32
+    else
+        one_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(1.0))
+        zero_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(0.0))
+    end
+
     summed_size = cols(A)#size(A,2)
 
     num_stripes = div(summed_size,M) + 1
@@ -106,7 +121,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     range = 1:M
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
-    CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,0,z.data)
+    CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,zero_ptr,z.data)
     mod!(z.data, z.data, N)
 
     i += 1
@@ -115,7 +130,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         range = M*(i-1)+1:M*i 
         A_temp = @view A.data[:,range]
         x_temp = @view x.data[range]
-        CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
+        CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,one_ptr,z.data)
         mod!(z.data, z.data, N)
 
         i += 1
@@ -125,7 +140,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     range = (M*(i-1)+1):cols(A)
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
-    CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
+    CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,one_ptr,z.data)
     mod!(z.data, z.data, N)
 
 end
