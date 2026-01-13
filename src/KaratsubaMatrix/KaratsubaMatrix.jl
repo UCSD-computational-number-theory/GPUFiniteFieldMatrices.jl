@@ -160,18 +160,54 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     C.data2 .= C.data2 - C.data1
     C.data2 .= C.data2 - A.data2*B.data2
     =#
-    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2; mod_N=2*A.N1)
-    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
+
+
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(C.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    # println(typeof(B.plan))
+    # println(size(B.plan))
+    # println(size(B.data1))
+    # println(size(B.data2))
+    
+    # @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_1!(A.plan.data,
+    #                                                                A.data1.data,
+    #                                                                A.data2.data,
+    #                                                                B.plan.data,
+    #                                                                B.data1.data,
+    #                                                                B.data2.data,
+    #                                                                A.N1)
+    # error()
+    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2,2*A.N1)
+    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2,2*B.N1)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1^2,maxopsOverride=false)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=((4*A.N1)^2),maxopsOverride=false)
     #GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
-    divide_elements!(C.plan,C.data1,A.N1)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1; mod_N=(4*A.N1)^2)
+    # divide_elements!(C.plan,C.data1,A.N1)
+    # GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,(4*A.N1)^2)
+
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_2!(C.plan.data,
+                                                                   C.data1.data,
+                                                                   C.data2.data,
+                                                                   C.N1)
+    
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1,maxopsOverride=false)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan; mod_N=(4*A.N1)^2)
-    GPUFiniteFieldMatrices.mod_elements!(C.data1,C.N1)
-    GPUFiniteFieldMatrices.add!(C.data2,C.data2,C.plan)
-    GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
+    # GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan,(4*A.N1)^2)
+    # GPUFiniteFieldMatrices.mod_elements!(C.data1,C.N1)
+    # GPUFiniteFieldMatrices.add!(C.data2,C.data2,C.plan)
+    # GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
+
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_3!(C.plan.data,
+                                                                   C.data1.data,
+                                                                   C.data2.data,
+                                                                   B.plan.data,
+                                                                   C.N1,
+                                                                   C.N2)
+
     C
 end
 
@@ -482,8 +518,25 @@ function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1.<B.data1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     =#
-    negate!(K,B)
-    add!(K,K,A)
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_sub_kernel!(K.data1.data,
+                                                              K.data2.data,
+                                                              A.data1.data,
+                                                              A.data2.data,
+                                                              B.data1.data,
+                                                              B.data2.data,
+                                                              A.N1,
+                                                              A.N2,
+                                                              A.M)
+
+    # negate!(K,B)
+    # add!(K,K,A)
     K
 end
 

@@ -114,36 +114,35 @@ function karatsuba_sub_kernel!(Kdata1,Kdata2,Adata1,Adata2,Bdata1,Bdata2,N1,N2,M
 
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
-    bneg1, bneg2 = karatsuba_negate_kernel_helper(Bdata1[i],Bdata2[i],N1,N2,M)
+    bneg1, bneg2 = karatsuba_negate_helper(Bdata1[i],Bdata2[i],N1,N2,M)
     
-    res1, res2 = karatsuba_add_helper(bneg1,bneg2,Adata1[i],Adata1[i],N1,N2)
+    res1, res2 = karatsuba_add_helper(bneg1,bneg2,Adata1[i],Adata2[i],N1,N2)
 
     Kdata1[i] = res1
     Kdata2[i] = res2
+
+    nothing
 end
 
 # MARK - Matrix multiplicatino
-
-function karatsuba_matmul_kernel_1!(Aplan,Adata1,Adata2,Bplan,Bdata1,Bdata2,N1)
-    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-
-    Aplan[i] = (Adata1[i] + Adata2[i]) % N1
-    Bplan[i] = (Bdata1[i] + Bdata2[i]) % N1
-end
 
 function karatsuba_matmul_kernel_2!(Cplan,Cdata1,Cdata2,N1)
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
     Cplan[i] = div(Cdata1[i], N1)
     Cdata2[i] = (Cdata2[i] - Cdata1[i]) % ((4*N1)^2)
+
+    nothing
 end
 
 
-function keratsuba_matmul_kernel_3!(Cdata1,Cdata2,Bplan,N1,N2)
+function karatsuba_matmul_kernel_3!(Cplan,Cdata1,Cdata2,Bplan,N1,N2)
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
     Cdata2[i] = (Cdata2[i] - Bplan[i]) % ((4*N1)^2)
     Cdata1[i] = mod(Cdata1[i],N1)
     Cdata2[i] = Cdata2[i] + Cplan[i]
     Cdata2[i] = mod(Cdata2[i], N2)
+
+    nothing
 end
