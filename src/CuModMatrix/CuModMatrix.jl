@@ -440,10 +440,9 @@ function _setup_PLUQ(A::CuModMatrix; debug::Bool=false)
 end
 
 function _is_invertible(U::CuModMatrix)
-    for diag_elem in diag(Array(U))
-        if diag_elem == 0
-            return false
-        end
+
+    if rank(Array(U)) != minimum(size(U))
+        return false
     end
 
     return true
