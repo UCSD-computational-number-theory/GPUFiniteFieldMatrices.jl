@@ -46,7 +46,7 @@ function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModM
 
     CUDA.CUBLAS.gemm!(tAchar,tBchar,alpha,A.data,B.data,beta,C.data)
 
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 end
 
 
@@ -97,7 +97,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
 
     if num_stripes == 1
         mul!(z.data,A.data,x.data)
-        z.data .%= N
+        mod!(z.data, z.data, N)
         return
     end
 
@@ -107,7 +107,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
     CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,0,z.data)
-    z.data .%= N
+    mod!(z.data, z.data, N)
 
     i += 1
 
@@ -116,7 +116,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         A_temp = @view A.data[:,range]
         x_temp = @view x.data[range]
         CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-        z.data .%= N
+        mod!(z.data, z.data, N)
 
         i += 1
     end
@@ -126,7 +126,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
     CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-    z.data .%= N
+    mod!(z.data, z.data, N)
 
 end
 
@@ -174,7 +174,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
 
     if num_stripes == 1
         mul!(C.data,A.data,B.data)
-        C.data .%= C.N
+        mod!(C.data, C.data, C.N)
         return
     end
 
@@ -184,7 +184,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
     A_temp = @view A.data[:,range]
     B_temp = @view B.data[range,:]
     CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,0,C.data)
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 
     i += 1
 
@@ -193,7 +193,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
         A_temp = @view A.data[:,range]
         B_temp = @view B.data[range,:]
         CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,1,C.data)
-        C.data .%= C.N
+        mod!(C.data, C.data, C.N)
 
         i += 1
     end
@@ -203,6 +203,6 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
     A_temp = @view A.data[:,range]
     B_temp = @view B.data[range,:]
     CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,1,C.data)
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 end
 

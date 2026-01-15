@@ -314,97 +314,6 @@ function Base.show(io::IO, ::MIME"text/plain", A::CuModMatrix)
     println(remove_first_line(repr("text/plain", Array(A))))
 end
 
-# Basic arithmetic operations with greedy reduction
-import Base: +, -, *
-
-function +(A::CuModArray, B::CuModArray)
-    if A.N != B.N
-        error("Matrices must have the same modulus N")
-    end
-    if size(A) != size(B)
-        error("Matrix dimensions must match")
-    end
-    
-    result = mod.(A.data + B.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function -(A::CuModArray, B::CuModArray)
-    if A.N != B.N
-        error("Matrices must have the same modulus N")
-    end
-    if size(A) != size(B)
-        error("Matrix dimensions must match")
-    end
-    
-    result = mod.(A.data - B.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-# Scalar operations
-function +(a::Number, A::CuModArray)
-    result = mod.(a .+ A.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function +(A::CuModArray, a::Number)
-    a + A
-end
-
-function -(a::Number, A::CuModArray)
-    result = mod.(a .- A.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function -(A::CuModArray, a::Number)
-    result = mod.(A.data .- a, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function *(a::Number, A::CuModArray)
-    result = mod.(a .* A.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function *(A::CuModArray, a::Number)
-    a * A
-end
-
-function *(A::CuModMatrix, B::CuModMatrix)
-    if A.N != B.N
-        throw(CuModArraySizeMismatchException(
-            "Matrices must have the same modulus N"
-        ))
-    end
-    # Note size checks etc. are done in mat_mul_gpu
-    
-    mat_mul_gpu_type(A, B)
-end
-
-function Base.broadcasted(::typeof(*), A::CuModArray, B::CuModArray)
-    if A.N != B.N
-        throw(CuModArrayModulusMismatchException(
-            "Matrices must have the same modulus N."
-        ))
-    end
-
-    # Note that this size check is done with the unpadded sizes
-    if size(A) != size(B)
-        throw(CuModArraySizeMismatchException(
-            "Matrix dimensions must match for .*."
-        ))
-    end
-    
-    result = mod.(A.data .* B.data, A.N)
-    
-    CuModArray(result, A.N, new_size=size(A))
-end
-
-function -(A::CuModArray)
-    result = mod.(-A.data, A.N)
-    CuModArray(result, A.N, new_size=size(A))
-end
-
 # Recursive binary exponentiation algorithm
 function Base.:^(A::CuModMatrix, n::Integer)
     if rows(A) != cols(A) 
@@ -657,63 +566,6 @@ function rand(::Type{T}, rows::Integer, cols::Integer, N::Integer) where T
     CuModMatrix(mod.(CUDA.rand(T, padded_rows, padded_cols), N), N, new_size=(rows,cols))
 end
 
-# In-place operations with optional modulus
-"""
-    add!(C, A, B, [mod_N])
-
-In-place addition: C = A + B mod N. No allocation is performed.
-If mod_N is provided, it will be used instead of C.N for the modulus.
-"""
-function add!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
-    N = mod_N > 0 ? mod_N : C.N
-    
-    if mod_N <= 0 && (A.N != B.N || A.N != C.N)
-        throw(CuModArrayModulusMismatchException(
-            "All matrices must have the same modulus N or provide an override mod_N"
-        ))
-    end
-    if size(A) != size(B) || size(A) != size(C)
-        throw(CuModArraySizeMismatchException(
-            "All matrix dimensions must match"
-        ))
-    end
-
-    # TODO: Time them
-    # TODO: figure out how to get the dots to fuse
-    C.data .= mod.(A.data .+ B.data, N)
-    #mod.(add!(C.data, A.data, B.data), N)
-
-    return C
-end
-
-"""
-    sub!(C, A, B, [mod_N])
-
-In-place subtraction: C = A - B mod N. No allocation is performed.
-If mod_N is provided, it will be used instead of C.N for the modulus.
-
-"""
-function sub!(C::CuModArray, A::CuModArray, B::CuModArray, mod_N::Integer=-1)
-    N = mod_N > 0 ? mod_N : C.N
-    
-    if mod_N <= 0 && (A.N != B.N || A.N != C.N)
-        throw(CuModArrayModulusMismatchException(
-            "All matrices must have the same modulus N or provide an override mod_N"
-        ))
-    end
-    if size(A) != size(B) || size(A) != size(C)
-        throw(CuModArraySizeMismatchException(
-            "All matrix dimensions must match"
-        ))
-    end
-    
-    #TODO: fuse the dots
-    C.data .= mod.(A.data .- B.data, N)
-    #mod.(sub!(C.data, A.data, B.data), N)
-    
-    return C
-end
-
 """
     elementwise_multiply!(C, A, B, [mod_N])
 
@@ -734,7 +586,7 @@ function elementwise_multiply!(C::CuModArray, A::CuModArray, B::CuModArray, mod_
         ))
     end
     
-    @. C.data = mod(A.data * B.data, N)
+    mul_elementwise!(C, A, B, N)
     return C
 end
 
@@ -759,79 +611,7 @@ function negate!(B::CuModArray, A::CuModArray, mod_N::Integer=-1)
         ))
     end
 
-    B.data .= mod.(.-A.data .+ N, N)
-    return B
-end
-
-"""
-    scalar_add!(B, A, s, [mod_N])
-
-In-place scalar addition: B = A + s mod N. No allocation is performed.
-If mod_N is provided, it will be used instead of B.N for the modulus.
-"""
-function scalar_add!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
-    N = mod_N > 0 ? mod_N : B.N
-    
-    if mod_N <= 0 && A.N != B.N
-        throw(CuModArrayModulusMismatchException(
-            "Both matrices must have the same modulus N or provide an override mod_N"
-        ))
-    end
-    if size(A) != size(B)
-        throw(CuModArraySizeMismatchException(
-            "Matrix dimensions must match"
-        ))
-    end
-
-    @. B.data = mod(A.data + s, N)
-    return B
-end
-
-"""
-    scalar_sub!(B, A, s, [mod_N])
-
-In-place scalar subtraction: B = A - s mod N. No allocation is performed.
-If mod_N is provided, it will be used instead of B.N for the modulus.
-"""
-function scalar_sub!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
-    N = mod_N > 0 ? mod_N : B.N
-    
-    if mod_N <= 0 && A.N != B.N
-        throw(CuModArrayModulusMismatchException(
-            "Both matrices must have the same modulus N or provide an override mod_N"
-        ))
-    end
-    if size(A) != size(B)
-        throw(CuModArraySizeMismatchException(
-            "Matrix dimensions must match"
-        ))
-    end
-    
-    @. B.data = mod(A.data - s, N)
-    return B
-end
-
-"""
-    mul!(B, A, s, [mod_N])
-
-In-place scalar multiplication: B = A * s mod N. No allocation is performed.
-If mod_N is provided, it will be used instead of B.N for the modulus.
-"""
-function LinearAlgebra.mul!(B::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1)
-    N = mod_N > 0 ? mod_N : B.N
-    
-    if mod_N <= 0 && A.N != B.N
-        throw(CuModArrayModulusMismatchException(
-            "Both matrices must have the same modulus N or provide an override mod_N"
-        ))
-    end
-    if size(A) != size(B)
-        throw(CuModArraySizeMismatchException(
-            "Matrix dimensions must match"
-        ))
-    end
-    
-    @. B.data = mod(A.data * s, N)
+    rscalar_sub!(B, A, 0, N)
     return B
 end
 
@@ -923,8 +703,7 @@ If mod_N is provided, it will be used instead of A.N for the modulus.
 """
 function mod_elements!(A::CuModArray, mod_N::Integer=-1)
     N = mod_N > 0 ? mod_N : A.N
-    
-    @. A.data = mod(A.data, N)
+    mod!(A.data, A.data, N)
     return A
 end
 
@@ -945,7 +724,7 @@ function change_modulus(A::CuModArray, new_N::Integer)
     result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows-TILE_WIDTH, dataCols-TILE_WIDTH, new_N)
     
     if new_N < A.N
-        @. result.data = mod(A.data, new_N)
+        mod!(result.data, A.data, new_N)
     else
         @. result.data = A.data
     end
@@ -966,6 +745,7 @@ All elements are reduced modulo new_N.
 function change_modulus_no_alloc!(A::CuModArray, new_N::Integer)
     if new_N < A.N
         @. A.data = mod(A.data, new_N)
+        mod!(A.data, A.data, new_N)
     end
 
     return CuModArray(A.data,new_N,new_size=size(A))

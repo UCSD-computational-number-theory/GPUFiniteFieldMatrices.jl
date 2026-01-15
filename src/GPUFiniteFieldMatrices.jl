@@ -19,6 +19,12 @@ include("KaratsubaMatrices.jl")
 
 include("CuModMatrix/rref_lu_pluq/permutations.jl")
 include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
+include("CuModMatrix/kernel_ops/common.jl")
+include("CuModMatrix/kernel_ops/add_ops.jl")
+include("CuModMatrix/kernel_ops/sub_ops.jl")
+include("CuModMatrix/kernel_ops/mul_ops.jl")
+include("CuModMatrix/kernel_ops/div_ops.jl")
+include("CuModMatrix/kernel_ops/mod_ops.jl")
 
 include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
 include("CuModMatrix/triangular/substitution_inplace.jl")

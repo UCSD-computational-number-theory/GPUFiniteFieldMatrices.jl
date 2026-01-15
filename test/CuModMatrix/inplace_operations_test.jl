@@ -132,7 +132,7 @@ function test_inplace_modulus_override()
     
     # Test add! with modulus override
     override_modulus = 3 
-    GPUFiniteFieldMatrices.add!(C, A, B, override_modulus)
+    GPUFiniteFieldMatrices.add!(C, A, B; mod_N=override_modulus)
     
     println("C = A + B (in-place with modulus override $override_modulus) = ")
     display(C)
