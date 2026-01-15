@@ -1,8 +1,8 @@
-#!/usr/bin/env julia
-
 using CUDA
 using BenchmarkTools
 using PrettyTables
+using Printf
+include("pretty_table.jl")
 
 CUDA.allowscalar(false)
 
@@ -38,96 +38,103 @@ end
 
 const DEFAULT_THREADS = 256
 
-function launch_kernel!(kernel, out, A, m; threads::Int=DEFAULT_THREADS)
+function launch_rem!(out, A, m; threads::Int=DEFAULT_THREADS)
     len = length(A)
     blocks = min(cld(len, threads), 65535)
-    @cuda threads=threads blocks=blocks kernel(out, A, m)
+    @cuda threads=threads blocks=blocks k_rem!(out, A, m)
     return out
 end
 
-launch_rem!(out, A, m; threads::Int=DEFAULT_THREADS) = launch_kernel!(k_rem!, out, A, m; threads=threads)
-launch_mod!(out, A, m; threads::Int=DEFAULT_THREADS) = launch_kernel!(k_mod!, out, A, m; threads=threads)
-launch_pct!(out, A, m; threads::Int=DEFAULT_THREADS) = launch_kernel!(k_pct!, out, A, m; threads=threads)
+function launch_mod!(out, A, m; threads::Int=DEFAULT_THREADS)
+    len = length(A)
+    blocks = min(cld(len, threads), 65535)
+    @cuda threads=threads blocks=blocks k_mod!(out, A, m)
+    return out
+end
+
+function launch_pct!(out, A, m; threads::Int=DEFAULT_THREADS)
+    len = length(A)
+    blocks = min(cld(len, threads), 65535)
+    @cuda threads=threads blocks=blocks k_pct!(out, A, m)
+    return out
+end
 
 broadcast_mod!(B, A, m) = (B .= mod.(A, m); nothing)
-kernel_mod!(B, A, m; threads=DEFAULT_THREADS) = (launch_mod!(B, A, m; threads=threads); nothing)
-kernel_rem!(B, A, m; threads=DEFAULT_THREADS) = (launch_rem!(B, A, m; threads=threads); nothing)
-kernel_pct!(B, A, m; threads=DEFAULT_THREADS) = (launch_pct!(B, A, m; threads=threads); nothing)
+broadcast_rem!(B, A, m) = (B .= rem.(A, m); nothing)
+broadcast_pct!(B, A, m) = (B .= A .% m; nothing)
 
-function bench_specs(specs; threads::Int=DEFAULT_THREADS, seconds::Float64=0.25, csv_path::AbstractString="mod_bench_results.csv")
+mod_gpu!(B, A, m; threads=DEFAULT_THREADS) = (launch_mod!(B, A, m; threads=threads); nothing)
+rem_gpu!(B, A, m; threads=DEFAULT_THREADS) = (launch_rem!(B, A, m; threads=threads); nothing)
+pct_gpu!(B, A, m; threads=DEFAULT_THREADS) = (launch_pct!(B, A, m; threads=threads); nothing)
+
+function bench_mod(specs; threads::Int=DEFAULT_THREADS, seconds::Float64=0.25, csv_path::AbstractString="mod_bench_results.csv")
     rows = Any[]
     for (nr, nc, mod_in, T) in specs
-        println("\n=== Spec: $(nr)x$(nc), mod=$(mod_in), T=$(T) ===")
-        bytes_needed = Int64(nr) * Int64(nc) * Int64(sizeof(T)) * 2
-        avail = CUDA.available_memory()
-        if bytes_needed > Int64(floor(0.80 * avail))
-            println("SKIP: needs $(round(bytes_needed / 2.0^30, digits=2)) GiB, available $(round(avail / 2.0^30, digits=2)) GiB")
-            push!(rows, (nr, nc, string(T), mod_in, NaN, NaN, NaN, NaN, "skipped (insufficient GPU memory)"))
-            continue
-        end
-
-        if T <: Integer
-            A_cpu = rand(T(0):T(10^6), nr, nc)
-        else
-            A_cpu = rand(T, nr, nc) .* T(10^6)
-        end
-
+        println("\n=== MOD: $(nr)x$(nc), mod=$(mod_in), T=$(T) ===")
+        A_cpu = T.(rand(0:10^6, nr, nc))
         A = CuArray(A_cpu)
         B = similar(A)
         m = convert(T, mod_in)
 
         broadcast_mod!(B, A, m); CUDA.synchronize()
-        kernel_mod!(B, A, m; threads=threads); CUDA.synchronize()
-        kernel_rem!(B, A, m; threads=threads); CUDA.synchronize()
-        kernel_pct!(B, A, m; threads=threads); CUDA.synchronize()
+        mod_gpu!(B, A, m; threads=threads); CUDA.synchronize()
+        broadcast_rem!(B, A, m); CUDA.synchronize()
+        rem_gpu!(B, A, m; threads=threads); CUDA.synchronize()
+        broadcast_pct!(B, A, m); CUDA.synchronize()
+        pct_gpu!(B, A, m; threads=threads); CUDA.synchronize()
 
-        t_broadcast = @belapsed begin
+        t_mod_b = @belapsed begin
             broadcast_mod!($B, $A, $m)
             CUDA.synchronize()
         end seconds=seconds
 
-        t_kmod = @belapsed begin
-            kernel_mod!($B, $A, $m; threads=$threads)
+        t_mod_k = @belapsed begin
+            mod_gpu!($B, $A, $m; threads=$threads)
             CUDA.synchronize()
         end seconds=seconds
 
-        t_krem = @belapsed begin
-            kernel_rem!($B, $A, $m; threads=$threads)
+        t_rem_b = @belapsed begin
+            broadcast_rem!($B, $A, $m)
             CUDA.synchronize()
         end seconds=seconds
 
-        t_kpct = @belapsed begin
-            kernel_pct!($B, $A, $m; threads=$threads)
+        t_rem_k = @belapsed begin
+            rem_gpu!($B, $A, $m; threads=$threads)
             CUDA.synchronize()
         end seconds=seconds
 
-        push!(rows, (nr, nc, string(T), mod_in, 1e3*t_broadcast, 1e3*t_kmod, 1e3*t_krem, 1e3*t_kpct, ""))
+        t_pct_b = @belapsed begin
+            broadcast_pct!($B, $A, $m)
+            CUDA.synchronize()
+        end seconds=seconds
+
+        t_pct_k = @belapsed begin
+            pct_gpu!($B, $A, $m; threads=$threads)
+            CUDA.synchronize()
+        end seconds=seconds
+
+        speedup_mod = 100 * (t_mod_b / t_mod_k - 1)
+        speedup_rem = 100 * (t_rem_b / t_rem_k - 1)
+        speedup_pct = 100 * (t_pct_b / t_pct_k - 1)
+
+        push!(rows, (nr, nc, string(T), mod_in, "mod", "broadcast", 1e3*t_mod_b, ""))
+        push!(rows, (nr, nc, string(T), mod_in, "mod", "kernel", 1e3*t_mod_k, speedup_mod))
+        push!(rows, (nr, nc, string(T), mod_in, "rem", "broadcast", 1e3*t_rem_b, ""))
+        push!(rows, (nr, nc, string(T), mod_in, "rem", "kernel", 1e3*t_rem_k, speedup_rem))
+        push!(rows, (nr, nc, string(T), mod_in, "pct", "broadcast", 1e3*t_pct_b, ""))
+        push!(rows, (nr, nc, string(T), mod_in, "pct", "kernel", 1e3*t_pct_k, speedup_pct))
     end
 
-    header = ["nrows", "ncols", "dtype", "modulus", "broadcast mod. (ms)", "kernel mod (ms)", "kernel rem (ms)", "kernel % (ms)", "note"]
-
-    println("\n--- Results (pretty) ---\n")
-    pretty_table(rows, header; formatters=(ft_printf("%d", 1), ft_printf("%d", 2), ft_printf("%s", 3), ft_printf("%d", 4), ft_printf("%.3f", 5), ft_printf("%.3f", 6), ft_printf("%.3f", 7), ft_printf("%.3f", 8), ft_printf("%s", 9)))
-
-    println("\n--- Results (Markdown) ---\n")
-    pretty_table(rows, header; backend=Val(:markdown), formatters=(ft_printf("%d", 1), ft_printf("%d", 2), ft_printf("%s", 3), ft_printf("%d", 4), ft_printf("%.3f", 5), ft_printf("%.3f", 6), ft_printf("%.3f", 7), ft_printf("%.3f", 8), ft_printf("%s", 9)))
-
-    open(csv_path, "w") do io
-        println(io, "nrows,ncols,dtype,modulus,broadcast_mod_ms,kernel_mod_ms,kernel_rem_ms,kernel_pct_ms,note")
-        for r in rows
-            noteq = replace(String(r[9]), "\""=>"\"\"")
-            println(io, "$(r[1]),$(r[2]),$(r[3]),$(r[4]),$(r[5]),$(r[6]),$(r[7]),$(r[8]),\"$noteq\"")
-        end
-    end
-    println("\nSaved CSV: $csv_path")
+    headers = ["nrows","ncols","dtype","modulus","variant","method","time (ms)","speedup (%)"]
+    print_and_save_table(rows, headers; csv_path=csv_path, title="MOD")
     return nothing
 end
 
 specs = [
-    (3200, 3200, 13, Int32),
-    (4096, 4096, 13, Int32),
+    (3200, 3200, 13, Float16),
     (3200, 3200, 13, Float32),
+    (3200, 3200, 13, Float64),
 ]
 
-bench_specs(specs; threads=256, seconds=0.25, csv_path="mod_bench_results.csv")
+bench_mod(specs; threads=256, seconds=0.25, csv_path="mod_bench_results.csv")
 nothing
