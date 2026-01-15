@@ -40,19 +40,19 @@ function scalar_add!(C::CuModArray, A::CuModArray, s::Number, mod_N::Integer=-1;
 end
 
 function +(A::CuModArray, B::CuModArray)
-    C = _alloc_like(A)
+    C = _alloc_like(A, A.N)
     add!(C, A, B)
     return C
 end
 
 function +(A::CuModArray, s::Number)
-    C = _alloc_like(A)
+    C = _alloc_like(A, A.N)
     scalar_add!(C, A, s)
     return C
 end
 
 function +(s::Number, A::CuModArray)
-    C = _alloc_like(A)
+    C = _alloc_like(A, A.N)
     scalar_add!(C, A, s)
     return C
 end
