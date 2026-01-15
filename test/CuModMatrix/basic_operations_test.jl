@@ -109,7 +109,7 @@ function test_basic_operations()
     @test Array(S3) == expected
     
     # Test unary negation
-    S4 = -A
+    S4 = A * -1
     println("-A = ")
     display(S4)
     println()
