@@ -5,7 +5,7 @@ function k_sub_matrix!(out, A, B, m)
     stride = blockDim().x * gridDim().x
     len = length(A)
     @inbounds for i = idx:stride:len
-        out[i] = mod(A[i] + (m - B[i]), m)
+        out[i] = mod(A[i] - B[i], m)
     end
     return
 end
@@ -15,7 +15,7 @@ function k_sub_scalar!(out, A, s, m)
     stride = blockDim().x * gridDim().x
     len = length(A)
     @inbounds for i = idx:stride:len
-        out[i] = mod(A[i] + (m - s), m)
+        out[i] = mod(A[i] - s, m)
     end
     return
 end
@@ -25,7 +25,7 @@ function k_rsub_scalar!(out, A, s, m)
     stride = blockDim().x * gridDim().x
     len = length(A)
     @inbounds for i = idx:stride:len
-        out[i] = mod(s + (m - A[i]), m)
+        out[i] = mod(s - A[i], m)
     end
     return
 end
