@@ -30,15 +30,6 @@ struct InverseNotDefinedException <: Exception
     message::String
 end
 
-function mod_kernel!(data, N)
-    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    if i <= length(data)
-        data[i] = ((data[i] % N) + N) % N
-        
-    end
-    return nothing
-end
-
 """
     CuModArray{T}
 
@@ -97,9 +88,7 @@ struct CuModArray{T,D} <: AbstractArray{T,D}
         copyto!(data, A_inds, converted, A_inds)
         
         if mod
-            threads = TILE_WIDTH
-            blocks = cld(length(data), threads)
-            @cuda threads=threads blocks=blocks mod_kernel!(data, N)
+            mod!(data, data, N)
         end
 
         if new_size != nothing 
