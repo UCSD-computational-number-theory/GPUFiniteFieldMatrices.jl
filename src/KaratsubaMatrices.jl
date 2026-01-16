@@ -160,15 +160,15 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     C.data2 .= C.data2 - C.data1
     C.data2 .= C.data2 - A.data2*B.data2
     =#
-    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2,2*A.N1)
-    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2,2*B.N1)
+    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2; mod_N=2*A.N1)
+    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1^2,maxopsOverride=false)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=((4*A.N1)^2),maxopsOverride=false)
     #GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
     divide_elements!(C.plan,C.data1,A.N1)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,(4*A.N1)^2)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1; mod_N=(4*A.N1)^2)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1,maxopsOverride=false)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan,(4*A.N1)^2)
+    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan; mod_N=(4*A.N1)^2)
     GPUFiniteFieldMatrices.mod_elements!(C.data1,C.N1)
     GPUFiniteFieldMatrices.add!(C.data2,C.data2,C.plan)
     GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
@@ -267,7 +267,7 @@ function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Int
     divide_elements!(K.data2,A,N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,N2)
     LinearAlgebra.mul!(K.data1,K.data2,Int(N1))
-    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,N1)
+    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1; mod_N=N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,N1)
     K
 end
@@ -374,13 +374,13 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
     =#
     
-    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1,2*A.N1)
+    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1; mod_N=2*A.N1)
     divide_elements!(K.plan,K.plan,A.N1)
-    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2,2*A.N2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2,2*A.N2)
+    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2; mod_N=2*A.N2)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2; mod_N=2*A.N2)
     LinearAlgebra.mul!(K.plan,K.plan,A.N1,A.N1^2)
-    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan,B.N1^2)
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan,A.N1^2)
+    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan; mod_N=B.N1^2)
+    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan; mod_N=A.N1^2)
     #=
     LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
@@ -388,9 +388,9 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     #=
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
+    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1; mod_N=2*A.M)
     GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
+    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M); mod_N=K.N2)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
     =#
 
@@ -456,19 +456,19 @@ function negate!(K::KaratsubaArray,A::KaratsubaArray)
     =#
     GPUFiniteFieldMatrices.mul!(K.data2,K.data2,0)
     GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N1,2*A.N1)
-    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1,2*A.N1)
+    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1; mod_N=2*A.N1)
     #=
     LinearAlgebra.mul!(K.data2,K.data2,1/A.N1)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
     =#
     divide_elements!(K.data2,K.data2,A.N1)
     LinearAlgebra.mul!(K.data1,K.data2,A.N1,A.M^2)
-    GPUFiniteFieldMatrices.add!(K.data1,K.data1,A.data1,A.M^2)
+    GPUFiniteFieldMatrices.add!(K.data1,K.data1,A.data1; mod_N=A.M^2)
     GPUFiniteFieldMatrices.negate!(K.data1,K.data1,A.N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
     GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N2,A.M^2)
     GPUFiniteFieldMatrices.scalar_sub!(K.data2,K.data2,1,A.M^2)
-    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data2,A.M)
+    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data2; mod_N=A.M)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     K
 end
