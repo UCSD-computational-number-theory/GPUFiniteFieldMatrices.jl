@@ -40,13 +40,13 @@ function LinearAlgebra.mul!(C::CuModArray, A::CuModArray, s::Number, mod_N::Inte
 end
 
 function *(A::CuModArray, s::Number)
-    C = _alloc_like(A, A.N)
+    C = _alloc_like(A)
     mul!(C, A, s)
     return C
 end
 
 function *(s::Number, A::CuModArray)
-    C = _alloc_like(A, A.N)
+    C = _alloc_like(A)
     mul!(C, A, s)
     return C
 end

@@ -1,6 +1,6 @@
 const DEFAULT_THREADS = 256
 
-function _alloc_like(A::CuModArray, N::Integer)
+function _alloc_like(A::CuModArray, N::Integer=A.N)
     T = eltype(A.data)
     D = ndims(A.data)
     data = similar(A.data)

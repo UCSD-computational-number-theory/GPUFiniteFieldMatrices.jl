@@ -69,19 +69,19 @@ function rscalar_sub!(C::CuArray, A::CuArray, s::Number, m::Integer; threads::In
 end
 
 function -(A::CuModArray, B::CuModArray)
-    C = _alloc_like(A, A.N)
+    C = _alloc_like(A)
     sub!(C, A, B)
     return C
 end
 
 function -(A::CuModArray, s::Number)
-    C = _alloc_like(A, A.N)
+    C = _alloc_like(A)
     scalar_sub!(C, A, s)
     return C
 end
 
 function -(s::Number, A::CuModArray)
-    C = _alloc_like(A, A.N)
+    C = _alloc_like(A)
     rscalar_sub!(C, A, s)
     return C
 end
