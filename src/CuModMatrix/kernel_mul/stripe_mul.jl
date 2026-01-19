@@ -49,10 +49,27 @@ function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModM
     C.data .%= C.N
 end
 
-const ONE_PTR_F64 = CUDA.CUBLAS.CuRef(Float64(1.0))
-const ZERO_PTR_F64 = CUDA.CUBLAS.CuRef(Float64(0.0))
-const ONE_PTR_F32 = CUDA.CUBLAS.CuRef(Float32(1.0))
-const ZERO_PTR_F32 = CUDA.CUBLAS.CuRef(Float32(0.0))
+const _cublas_scalar_cache = IdDict{Task,Tuple}()
+
+"""
+returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
+"""
+@inline function cublas_scalars_f64()
+    t = current_task()
+    get!(_cublas_scalar_cache, t) do
+        (CUDA.CUBLAS.CuRef(0.0), CUDA.CUBLAS.CuRef(1.0))
+    end
+end
+
+"""
+returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
+"""
+@inline function cublas_scalars_f32()
+    t = current_task()
+    get!(_cublas_scalar_cache, t) do
+        (CUDA.CUBLAS.CuRef(Float32(0.0)), CUDA.CUBLAS.CuRef(Float32(1.0)))
+    end
+end
 
 """
     stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
@@ -96,25 +113,25 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     end
 
     if eltype(A.data) == Float64
-        one_ptr = ONE_PTR_F64
-        zero_ptr = ZERO_PTR_F64
+        (zero_ptr, one_ptr) = cublas_scalars_f64()
     elseif eltype(A.data) == Float32
-        one_ptr = ONE_PTR_F32
-        zero_ptr = ZERO_PTR_F32
+        (zero_ptr, one_ptr) = cublas_scalars_f32()
     else
-        one_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(1.0))
         zero_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(0.0))
+        one_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(1.0))
     end
 
     summed_size = cols(A)#size(A,2)
 
     num_stripes = div(summed_size,M) + 1
 
+
     if num_stripes == 1
         mul!(z.data,A.data,x.data)
         z.data .%= N
         return
     end
+
 
     i = 1
 
