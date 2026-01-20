@@ -22,7 +22,7 @@ function div!(C::CuModArray, A::CuModArray, s::Integer, mod_N::Integer=-1; threa
 end
 
 function /(A::CuModArray, s::Integer)
-    C = _alloc_like(A, A.N)
+    C = similar(A)
     div!(C, A, s)
     return C
 end
