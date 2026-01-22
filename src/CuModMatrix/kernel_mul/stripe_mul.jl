@@ -127,7 +127,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
 
 
     if num_stripes == 1
-        mul!(z.data,A.data,x.data)
+        CUDA.CUBLAS.gemv!('N',one_ptr,A.data,x.data,zero_ptr,z.data)
         mod!(z.data, z.data, N)
         return
     end
