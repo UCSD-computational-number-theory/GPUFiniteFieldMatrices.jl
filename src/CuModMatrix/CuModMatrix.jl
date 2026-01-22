@@ -622,6 +622,14 @@ As ZZ/n is commutative, this has the same behavior as lmul!
 """
 lmul!(s::Number,A::CuModArray) = mul!(A,A,s)
 
+function dumb_copy_kernel!(B,A)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+    B[i] = A[i]
+
+    nothing
+end
+
 """
     copy!(B, A)
 
@@ -637,7 +645,13 @@ function Base.copy!(B::CuModArray, A::CuModArray)
         ))
     end
     
-    CUDA.copy!(B.data, A.data)
+    threads = TILE_WIDTH
+    blocks = length(A.data) ÷ TILE_WIDTH
+
+    @cuda threads=threads blocks=blocks dumb_copy_kernel!(B.data,A.data)
+
+    # CUDA.copy!(B.data, A.data)
+
     return B
 end
 
@@ -817,7 +831,7 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=no
 end
 
 function CuModcopy(A::CuModArray{T,D}) where {T,D}
-    B = CuModArray{T,D}(copy(Array(A)), copy(A.N))
+    B = CuModArray{T,D}(copy(A.data), A.N, mod=false, new_size=size(A))
 end
 
 #TODO: addmul! (add and scalar multiply), gemv!, gemm!

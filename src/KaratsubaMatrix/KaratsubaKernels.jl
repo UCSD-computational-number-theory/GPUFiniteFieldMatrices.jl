@@ -126,23 +126,41 @@ end
 
 # MARK - Matrix multiplicatino
 
-function karatsuba_matmul_kernel_2!(Cplan,Cdata1,Cdata2,N1)
+function karatsuba_matmul_kernel_1!(Aplan,Adata1,Adata2,Bplan,Bdata1,Bdata2,N1)
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
-    Cplan[i] = div(Cdata1[i], N1)
-    Cdata2[i] = (Cdata2[i] - Cdata1[i]) % ((4*N1)^2)
+    if i <= length(Bplan)
+        Bplan[i] = (Bdata1[i] + Bdata2[i]) % (2*N1)
+    end
+
+    Aplan[i] = (Adata1[i] + Adata2[i]) % (2*N1)
+
+    nothing
+end
+
+function karatsuba_matmul_kernel_2!(Cdata1,Cdata2,Bplan,N1,N2)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+    cc1 = mod(Cdata1[i],N1^2)
+    cc2 = mod(Cdata2[i],(4*N1)^2)
+    bp = mod(Bplan[i],N1)
+
+    cp = div(cc1, N1)
+    cc2 = (cc2 - cc1) % ((4*N1)^2)
+
+    cc2 = (cc2 - bp) % ((4*N1)^2)
+    cc2 = cc2 + cp
+
+    Cdata1[i] = mod(cc1, N1)
+    Cdata2[i] = mod(cc2, N2)
 
     nothing
 end
 
 
-function karatsuba_matmul_kernel_3!(Cplan,Cdata1,Cdata2,Bplan,N1,N2)
-    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+# function karatsuba_matmul_kernel_3!(Cplan,Cdata1,Cdata2,Bplan,N1,N2)
+#     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 
-    Cdata2[i] = (Cdata2[i] - Bplan[i]) % ((4*N1)^2)
-    Cdata1[i] = mod(Cdata1[i],N1)
-    Cdata2[i] = Cdata2[i] + Cplan[i]
-    Cdata2[i] = mod(Cdata2[i], N2)
 
-    nothing
-end
+#     nothing
+# end
