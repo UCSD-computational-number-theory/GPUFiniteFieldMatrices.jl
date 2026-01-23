@@ -186,6 +186,38 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     C
 end
 
+"""
+The number of actual matmuls to multiply one karatsuba matrix.
+If a higher Karatsuba multiplication algorithm were implemented,
+it could be implemented in a similar way with a bigger constant
+"""
+const nKMuls = 3 
+
+# const _cublas_Apointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+# const _cublas_Bpointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+# const _cublas_Cpointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+
+# @inline function cublas_Apointers_f64()
+#     t = current_task()
+#     get!(_cublas_Apointers_cache, t) do
+#         CuArray{Ptr{Float64}
+
+# """
+# The following is a device vector of device pointers
+# """
+# mat_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+# vec_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+# target_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+
+# """
+# The following is a host vector of device pointers
+# """
+# mat_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+# vec_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+# target_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+
+
+# the stuff in this function should apply to the general KMatMul!, but with gemm instead of gemv
 function KMatMul_gemv!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     if (A.M != B.M) || (A.M != C.M)
         error("Matrices must have the same modulus m")
@@ -223,11 +255,16 @@ function KMatMul_gemv!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     # GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
 
     (zero_ptr, one_ptr) = cublas_scalars_f64()
-    CUDA.CUBLAS.gemv!('N',one_ptr,A.data1.data,B.data1.data,zero_ptr,C.data1.data)
 
-    CUDA.CUBLAS.gemv!('N',one_ptr,A.plan.data,B.plan.data,zero_ptr,C.data2.data)
 
-    CUDA.CUBLAS.gemv!('N',one_ptr,A.data2.data,B.data2.data,zero_ptr,B.plan.data)
+    targets = [C.data1.data, C.data2.data, B.plan.data]
+    mats = [A.data1.data, A.plan.data, A.data2.data]
+    vecs = [B.data1.data, B.plan.data, B.data2.data]
+    CUDA.CUBLAS.gemv_batched!('N',one_ptr,mats,vecs,zero_ptr,targets)
+
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.data1.data,B.data1.data,zero_ptr,C.data1.data)
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.plan.data,B.plan.data,zero_ptr,C.data2.data)
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.data2.data,B.data2.data,zero_ptr,B.plan.data)
     
     tw = GPUFiniteFieldMatrices.TILE_WIDTH
 
