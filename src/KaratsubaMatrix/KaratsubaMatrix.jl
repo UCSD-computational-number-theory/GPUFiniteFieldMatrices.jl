@@ -351,6 +351,7 @@ function MatToKMat(T::Type,A::AbstractArray,M::Integer)
     KaratsubaMatrix(T,A,M,M,M)
 end
 
+# right now, this assumes that A is already a CuModMatrix
 function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
     #if occursin("CuMod", string(typeof(A)))
     K = KaratsubaArray(GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),N1,N2,M)

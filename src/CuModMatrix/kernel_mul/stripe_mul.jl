@@ -49,15 +49,16 @@ function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModM
     mod!(C.data, C.data, C.N)
 end
 
-const _cublas_scalar_cache = IdDict{Task,Tuple}()
+const _cublas_scalar_cache_f64 = IdDict{Task,Tuple}()
+const _cublas_scalar_cache_f32 = IdDict{Task,Tuple}()
 
 """
 returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
 """
 @inline function cublas_scalars_f64()
     t = current_task()
-    get!(_cublas_scalar_cache, t) do
-        (CUDA.CUBLAS.CuRef(0.0), CUDA.CUBLAS.CuRef(1.0))
+    get!(_cublas_scalar_cache_f64, t) do
+        (CUDA.CUBLAS.CuRef(Float64(0.0)), CUDA.CUBLAS.CuRef(Float64(1.0)))
     end
 end
 
@@ -66,7 +67,7 @@ returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
 """
 @inline function cublas_scalars_f32()
     t = current_task()
-    get!(_cublas_scalar_cache, t) do
+    get!(_cublas_scalar_cache_f32, t) do
         (CUDA.CUBLAS.CuRef(Float32(0.0)), CUDA.CUBLAS.CuRef(Float32(1.0)))
     end
 end
