@@ -140,41 +140,147 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     if (A.plan == nothing) || (B.plan == nothing) || (C.plan == nothing)
         error("Must initialize plans first")
     end
-    #=
-    if (size(A.data1)[1] != size(C.data1)[1]) || (size(B.data1)[2] != size(C.data1)[2])
-        error("Output matrix has wrong dimensions")
+    if eltype(A.data1.data) != Float64
+        error("Not implemented for non-Float64 entries")
     end
-    =#
-    #=
-    max_ops = find_max_ops(eltype(A.data1),max(size(A.data1)...,size(B.data1)...))
+    # TODO: enable this
+    # maxN = max(A.N1,A.N2)
+    # if find_max_stripe_ops(eltype(A.data1.data), maxN) < size(A,1)
+    #     error("Matrix is too big for a single matmul, this is currently not implemented")
+    # end
 
-    if A.M > max_ops
-        error("Modulus is larger than max_ops")
-    end
-    =#
-    #=
-    plan.data1 .= A.data1 + A.data2
-    plan.data2 .= B.data1 + B.data2
-    C.data1 .= A.data1*B.data1
-    C.data2 .= plan.data1*plan.data2
-    C.data2 .= C.data2 - C.data1
-    C.data2 .= C.data2 - A.data2*B.data2
-    =#
-    GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2,2*A.N1)
-    GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2,2*B.N1)
+    tw = TILE_WIDTH
+
+    totalsize = length(C.data1.data) # the vector length
+
+    threads = tw
+    blocks = totalsize ÷ tw
+    
+    A_cols = size(A.data,2)
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_1!(A.plan.data,
+                                                                   A.data1.data,
+                                                                   A.data2.data,
+                                                                   A_cols,
+                                                                   B.plan.data,
+                                                                   B.data1.data,
+                                                                   B.data2.data,
+                                                                   A.N1)
+    # GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2; mod_N=2*A.N1)
+    # GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
+
+    # use gemm
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1^2,maxopsOverride=false)
+
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=((4*A.N1)^2),maxopsOverride=false)
-    #GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
-    divide_elements!(C.plan,C.data1,A.N1)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,C.data1,(4*A.N1)^2)
     GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1,maxopsOverride=false)
-    GPUFiniteFieldMatrices.sub!(C.data2,C.data2,B.plan,(4*A.N1)^2)
-    GPUFiniteFieldMatrices.mod_elements!(C.data1,C.N1)
-    GPUFiniteFieldMatrices.add!(C.data2,C.data2,C.plan)
-    GPUFiniteFieldMatrices.mod_elements!(C.data2,C.N2)
+
+    
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_2!(
+                                                                   C.data1.data,
+                                                                   C.data2.data,
+                                                                   B.plan.data,
+                                                                   C.N1,
+                                                                   C.N2)
+
+
     C
 end
 
+"""
+The number of actual matmuls to multiply one karatsuba matrix.
+If a higher Karatsuba multiplication algorithm were implemented,
+it could be implemented in a similar way with a bigger constant
+"""
+const nKMuls = 3 
+
+# const _cublas_Apointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+# const _cublas_Bpointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+# const _cublas_Cpointers_cache_f64 = IdDict{Task,CuArray{Ptr{Float64}}}()
+
+# @inline function cublas_Apointers_f64()
+#     t = current_task()
+#     get!(_cublas_Apointers_cache, t) do
+#         CuArray{Ptr{Float64}
+
+# """
+# The following is a device vector of device pointers
+# """
+# mat_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+# vec_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+# target_ptrs_device = CuArray{CuPtr{Float64}}(undef,nKMuls)
+
+# """
+# The following is a host vector of device pointers
+# """
+# mat_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+# vec_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+# target_ptrs_host = CUDA.pin(Vector{CuPtr{Float64}}(undef,nKMuls))
+
+
+# the stuff in this function should apply to the general KMatMul!, but with gemm instead of gemv
+function KMatMul_gemv!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
+    if (A.M != B.M) || (A.M != C.M)
+        error("Matrices must have the same modulus m")
+    end
+    if size(A.data1)[2] != size(B.data1)[1]
+        error("Matrix dimensions don't work for multiplication")
+    end
+    if (A.plan == nothing) || (B.plan == nothing) || (C.plan == nothing)
+        error("Must initialize plans first")
+    end
+    if eltype(A.data1.data) != Float64
+        error("Not implemented for non-Float64 entries")
+    end
+    # TOD0: enable this 
+    # maxN = max(A.N1,A.N2)
+    # if find_max_stripe_ops(eltype(A.data1.data), maxN) < size(A,1)
+    #     error("Matrix is too big for a single matmul, this is currently not implemented")
+    # end
+    
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_1!(A.plan.data,
+                                                                   A.data1.data,
+                                                                   A.data2.data,
+                                                                   B.plan.data,
+                                                                   B.data1.data,
+                                                                   B.data2.data,
+                                                                   A.N1)
+    # GPUFiniteFieldMatrices.add!(A.plan,A.data1,A.data2; mod_N=2*A.N1)
+    # GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
+
+    (zero_ptr, one_ptr) = cublas_scalars_f64()
+
+
+    targets = [C.data1.data, C.data2.data, B.plan.data]
+    mats = [A.data1.data, A.plan.data, A.data2.data]
+    vecs = [B.data1.data, B.plan.data, B.data2.data]
+    CUDA.CUBLAS.gemv_batched!('N',one_ptr,mats,vecs,zero_ptr,targets)
+
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.data1.data,B.data1.data,zero_ptr,C.data1.data)
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.plan.data,B.plan.data,zero_ptr,C.data2.data)
+    # CUDA.CUBLAS.gemv!('N',one_ptr,A.data2.data,B.data2.data,zero_ptr,B.plan.data)
+    
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(C.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+    @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_2!(C.data1.data,
+                                                                   C.data2.data,
+                                                                   B.plan.data,
+                                                                   C.N1,
+                                                                   C.N2)
+
+
+    C
+end
 
 Base.size(A::KaratsubaArray) = size(A.data1)
 
@@ -245,6 +351,7 @@ function MatToKMat(T::Type,A::AbstractArray,M::Integer)
     KaratsubaMatrix(T,A,M,M,M)
 end
 
+# right now, this assumes that A is already a CuModMatrix
 function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Integer)
     #if occursin("CuMod", string(typeof(A)))
     K = KaratsubaArray(GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),GPUFiniteFieldMatrices.zeros(eltype(A),size(A)...,N1),N1,N2,M)
@@ -267,7 +374,7 @@ function KaratsubaMatrix(T::Type,A::AbstractArray,N1::Integer,N2::Integer,M::Int
     divide_elements!(K.data2,A,N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,N2)
     LinearAlgebra.mul!(K.data1,K.data2,Int(N1))
-    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1,N1)
+    GPUFiniteFieldMatrices.sub!(K.data1,A,K.data1; mod_N=N1)
     GPUFiniteFieldMatrices.mod_elements!(K.data1,N1)
     K
 end
@@ -355,9 +462,29 @@ function *(A::KaratsubaArray, B::KaratsubaArray)
     K
 end
 
-"""
-This is not safe if K == B, but it is safe if K == A.
-"""
+# """
+
+# Works even for multidimensional arrays because CuArrays support linear indexing
+
+# """
+# function karatsuba_add_kernel!(Kplan,Kdata1,Kdata2,Adata1,Adata2,Bdata1,Bdata2,N1,N2)
+#     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+
+#     Kplan[i] = (Adata1[i] + Bdata1[i]) % (2*N1)
+#     Kplan[i] = div(Kplan[i],N1)
+#     Kdata2[i] = (Kplan[i] + Adata2[i]) % (2*N2)
+#     Kdata2[i] = (Kdata2[i] + Bdata2[i]) % (2*N2)
+
+#     Kplan[i] = (Kplan[i] * N1) % (N1^2)
+#     Kplan[i] = (Bdata1[i] - Kplan[i]) % (N1^2)
+#     Kdata1[i] = (Adata1[i] + Kplan[i]) % (N1^2)
+
+#     Kdata1[i] %= N1
+#     Kdata2[i] %= N2
+
+#     return
+# end
+
 function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.M != B.M) || (A.M != K.M)
         error("Matrices must have the same modulus m")
@@ -365,37 +492,76 @@ function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
         error("Matrix dimensions must match")
     end
-    if (A.plan == nothing) || (K.plan == nothing)
-        error("Must initialize plans first")
+
+    #TODO: remove plans
+    if (K.plan == nothing)
+        error("Must initialize plan first before using fallback implementation")
     end
-    #=
-    K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
-    K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
-    K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
-    =#
-    
-    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1,2*A.N1)
-    divide_elements!(K.plan,K.plan,A.N1)
-    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2,2*A.N2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2,2*A.N2)
-    LinearAlgebra.mul!(K.plan,K.plan,A.N1,A.N1^2)
-    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan,B.N1^2)
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan,A.N1^2)
-    #=
-    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
-    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
-    =#
-    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
-    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
-    #=
-    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
-    GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
-    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
-    GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
-    =#
+
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_add_kernel!(K.data1.data,
+                                                              K.data2.data,
+                                                              A.data1.data,
+                                                              A.data2.data,
+                                                              B.data1.data,
+                                                              B.data2.data,
+                                                              A.N1,
+                                                              A.N2)
+
 
     K
 end
+
+#"""
+#This is a fallback implementation, and shouldn't be used
+#unless the dimension is greater than or equal to 3.
+
+#This is not safe if K == B, but it is safe if K == A.
+#"""
+#function add!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
+#    if (A.M != B.M) || (A.M != K.M)
+#        error("Matrices must have the same modulus m")
+#    end
+#    if (size(A.data1) != size(B.data1)) || (size(A.data1) != (size(K.data1)))
+#        error("Matrix dimensions must match")
+#    end
+#    if (A.plan == nothing) || (K.plan == nothing)
+#        error("Must initialize plans first before using fallback implementation")
+#    end
+#    #=
+#    K.data2 .= mod.(trunc.((A.data1+B.data1)./A.M),A.N2)
+#    K.data1 .= mod.(A.data1 + B.data1 - A.M*K.data2,A.N1)
+#    K.data2 .= mod.(K.data2 + A.data2 + B.data2,A.N2)
+#    =#
+    
+#    GPUFiniteFieldMatrices.add!(K.plan,A.data1,B.data1,2*A.N1)
+#    divide_elements!(K.plan,K.plan,A.N1)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.plan,A.data2,2*A.N2)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.data2,B.data2,2*A.N2)
+#    LinearAlgebra.mul!(K.plan,K.plan,A.N1,A.N1^2)
+#    GPUFiniteFieldMatrices.sub!(K.plan,B.data1,K.plan,B.N1^2)
+#    GPUFiniteFieldMatrices.add!(K.data1,A.data1,K.plan,A.N1^2)
+#    #=
+#    LinearAlgebra.mul!(K.data2,K.data2,1/A.M)
+#    GPUFiniteFieldMatrices.trunc_elements!(K.data2)
+#    =#
+#    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+#    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+#    #=
+#    GPUFiniteFieldMatrices.add!(K.data1,A.data1,B.data1,2*A.M)
+#    GPUFiniteFieldMatrices.add!(K.data2,A.data2,B.data2)
+#    GPUFiniteFieldMatrices.add!(K.data2,K.data2,GPUFiniteFieldMatrices.divides(K.data1,K.M),K.N2)
+#    GPUFiniteFieldMatrices.mod_elements!(K.data1,K.N1)
+#    =#
+
+#    K
+#end
 
 function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     if (A.M != B.M) || (A.M != K.M)
@@ -423,8 +589,25 @@ function sub!(K::KaratsubaArray, A::KaratsubaArray, B::KaratsubaArray)
     GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1.<B.data1)
     GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     =#
-    negate!(K,B)
-    add!(K,K,A)
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_sub_kernel!(K.data1.data,
+                                                              K.data2.data,
+                                                              A.data1.data,
+                                                              A.data2.data,
+                                                              B.data1.data,
+                                                              B.data2.data,
+                                                              A.N1,
+                                                              A.N2,
+                                                              A.M)
+
+    # negate!(K,B)
+    # add!(K,K,A)
     K
 end
 
@@ -435,41 +618,98 @@ function scalar_multiply!(B::KaratsubaArray, A::KaratsubaArray, s::Number)
     if size(A.data1) != size(B.data1)
         error("Matrix dimensions must match")
     end
+
+    # LinearAlgebra.mul!(B.data2,A.data1,s,A.N1^2)
+    # divide_elements!(B.data2,B.data2,A.N1)
+    # LinearAlgebra.mul!(B.data1,A.data2,s,A.N2)
+    # GPUFiniteFieldMatrices.add!(B.data2,B.data2,B.data1)
+    # LinearAlgebra.mul!(B.data1,A.data1,s,A.N1)
+
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_scalar_multiply_kernel!(B.data1.data,
+                                                                    B.data2.data,
+                                                                    A.data1.data,
+                                                                    A.data2.data,
+                                                                    s,
+                                                                    A.N1,
+                                                                    A.N2)
+
     #=
     B.data2 .= mod.(trunc.((s*A.data1)/A.M),A.N2)
     B.data1 .= mod.(s*A.data1 - B.M*B.data2,A.N1)
     B.data2 .= mod.(B.data2 + s*A.data2,A.N2)
     =#
-    LinearAlgebra.mul!(B.data2,A.data1,s,A.N1^2)
-    divide_elements!(B.data2,B.data2,A.N1)
-    LinearAlgebra.mul!(B.data1,A.data2,s,A.N2)
-    GPUFiniteFieldMatrices.add!(B.data2,B.data2,B.data1)
-    LinearAlgebra.mul!(B.data1,A.data1,s,A.N1)
     B
 end
 
+
+
+# function negate!(K::KaratsubaArray, A::KaratsubaArray)
+
+#     tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+#     totalsize = length(A.data1.data)
+
+#     threads = tw
+#     blocks = totalsize ÷ tw
+
+    # @cuda threads=threads blocks=blocks karatsuba_negate_kernel!(K.data1.data,
+    #                                                              K.data2.data,
+    #                                                              A.data1.data,
+    #                                                              A.data2.data,
+    #                                                              A.N1,
+    #                                                              A.N2,
+    #                                                             A.M)
+
+
+#     K
+# end
+
 function negate!(K::KaratsubaArray,A::KaratsubaArray)
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+    @cuda threads=threads blocks=blocks karatsuba_negate_kernel!(K.data1.data,
+                                                                 K.data2.data,
+                                                                 A.data1.data,
+                                                                 A.data2.data,
+                                                                 A.N1,
+                                                                 A.N2,
+                                                                A.M)
+                                                                 
+     
+    
     #=
     K.data2 .= trunc.((A.M .- A.data1)/A.M)
     K.data1 .= mod.(A.M - A.data1 - A.M*K.data2,A.N1)
     K.data2 .= mod.(mod.(K.data2 + A.M - A.data2 - 1,A.M),A.N2)
     =#
-    GPUFiniteFieldMatrices.mul!(K.data2,K.data2,0)
-    GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N1,2*A.N1)
-    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1,2*A.N1)
+    # GPUFiniteFieldMatrices.mul!(K.data2,K.data2,0)
+    # GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N1,2*A.N1)
+    # GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data1,2*A.N1)
     #=
     LinearAlgebra.mul!(K.data2,K.data2,1/A.N1)
     GPUFiniteFieldMatrices.trunc_elements!(K.data2)
-    =#
-    divide_elements!(K.data2,K.data2,A.N1)
-    LinearAlgebra.mul!(K.data1,K.data2,A.N1,A.M^2)
-    GPUFiniteFieldMatrices.add!(K.data1,K.data1,A.data1,A.M^2)
-    GPUFiniteFieldMatrices.negate!(K.data1,K.data1,A.N1)
-    GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
-    GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N2,A.M^2)
-    GPUFiniteFieldMatrices.scalar_sub!(K.data2,K.data2,1,A.M^2)
-    GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data2,A.M)
-    GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
+     =#
+    # divide_elements!(K.data2,K.data2,A.N1)
+    # LinearAlgebra.mul!(K.data1,K.data2,A.N1,A.M^2)
+    # GPUFiniteFieldMatrices.add!(K.data1,K.data1,A.data1,A.M^2)
+    # GPUFiniteFieldMatrices.negate!(K.data1,K.data1,A.N1)
+    # GPUFiniteFieldMatrices.mod_elements!(K.data1,A.N1)
+    # GPUFiniteFieldMatrices.scalar_add!(K.data2,K.data2,A.N2,A.M^2)
+    # GPUFiniteFieldMatrices.scalar_sub!(K.data2,K.data2,1,A.M^2)
+    # GPUFiniteFieldMatrices.sub!(K.data2,K.data2,A.data2,A.M)
+    # GPUFiniteFieldMatrices.mod_elements!(K.data2,A.N2)
     K
 end
 

@@ -71,7 +71,8 @@ function test_basic_operations()
     @test Array(E) == expected
     
     # Element-wise multiplication
-    F = A .* B
+    F = GPUFiniteFieldMatrices.zeros(eltype(A.data), size(A, 1), size(A, 2), modulus)
+    elementwise_multiply!(F, A, B)
     println("A .* B = ")
     display(F)
     println()
@@ -108,7 +109,7 @@ function test_basic_operations()
     @test Array(S3) == expected
     
     # Test unary negation
-    S4 = -A
+    S4 = A * -1
     println("-A = ")
     display(S4)
     println()

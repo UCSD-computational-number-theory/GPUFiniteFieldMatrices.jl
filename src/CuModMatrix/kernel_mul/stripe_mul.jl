@@ -46,9 +46,31 @@ function unsafe_gemm!(transposeA::Bool,transposeB::Bool,alpha::Integer,A::CuModM
 
     CUDA.CUBLAS.gemm!(tAchar,tBchar,alpha,A.data,B.data,beta,C.data)
 
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 end
 
+const _cublas_scalar_cache_f64 = IdDict{Task,Tuple}()
+const _cublas_scalar_cache_f32 = IdDict{Task,Tuple}()
+
+"""
+returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
+"""
+@inline function cublas_scalars_f64()
+    t = current_task()
+    get!(_cublas_scalar_cache_f64, t) do
+        (CUDA.CUBLAS.CuRef(Float64(0.0)), CUDA.CUBLAS.CuRef(Float64(1.0)))
+    end
+end
+
+"""
+returns (0, 1) as pointers that can be used with low-level CUBLAS APIs
+"""
+@inline function cublas_scalars_f32()
+    t = current_task()
+    get!(_cublas_scalar_cache_f32, t) do
+        (CUDA.CUBLAS.CuRef(Float32(0.0)), CUDA.CUBLAS.CuRef(Float32(1.0)))
+    end
+end
 
 """
     stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector)
@@ -91,23 +113,34 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         throw(ArgumentError("cannot perform a single multiplication for modulus $(A.N) with datatype $(eltype(A.data))"))
     end
 
+    if eltype(A.data) == Float64
+        (zero_ptr, one_ptr) = cublas_scalars_f64()
+    elseif eltype(A.data) == Float32
+        (zero_ptr, one_ptr) = cublas_scalars_f32()
+    else
+        zero_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(0.0))
+        one_ptr = CUDA.CUBLAS.CuRef(eltype(A.data)(1.0))
+    end
+
     summed_size = cols(A)#size(A,2)
 
     num_stripes = div(summed_size,M) + 1
 
+
     if num_stripes == 1
-        mul!(z.data,A.data,x.data)
-        z.data .%= N
+        CUDA.CUBLAS.gemv!('N',one_ptr,A.data,x.data,zero_ptr,z.data)
+        mod!(z.data, z.data, N)
         return
     end
+
 
     i = 1
 
     range = 1:M
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
-    CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,0,z.data)
-    z.data .%= N
+    CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,zero_ptr,z.data)
+    mod!(z.data, z.data, N)
 
     i += 1
 
@@ -115,8 +148,8 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
         range = M*(i-1)+1:M*i 
         A_temp = @view A.data[:,range]
         x_temp = @view x.data[range]
-        CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-        z.data .%= N
+        CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,one_ptr,z.data)
+        mod!(z.data, z.data, N)
 
         i += 1
     end
@@ -125,8 +158,8 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     range = (M*(i-1)+1):cols(A)
     A_temp = @view A.data[:,range]
     x_temp = @view x.data[range]
-    CUDA.CUBLAS.gemv!('N',1,A_temp,x_temp,1,z.data)
-    z.data .%= N
+    CUDA.CUBLAS.gemv!('N',one_ptr,A_temp,x_temp,one_ptr,z.data)
+    mod!(z.data, z.data, N)
 
 end
 
@@ -174,7 +207,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
 
     if num_stripes == 1
         mul!(C.data,A.data,B.data)
-        C.data .%= C.N
+        mod!(C.data, C.data, C.N)
         return
     end
 
@@ -184,7 +217,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
     A_temp = @view A.data[:,range]
     B_temp = @view B.data[range,:]
     CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,0,C.data)
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 
     i += 1
 
@@ -193,7 +226,7 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
         A_temp = @view A.data[:,range]
         B_temp = @view B.data[range,:]
         CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,1,C.data)
-        C.data .%= C.N
+        mod!(C.data, C.data, C.N)
 
         i += 1
     end
@@ -203,6 +236,6 @@ function stripe_mul!(C::CuModMatrix,A::CuModMatrix,B::CuModMatrix; M=nothing, N=
     A_temp = @view A.data[:,range]
     B_temp = @view B.data[range,:]
     CUDA.CUBLAS.gemm!('N','N',1,A_temp,B_temp,1,C.data)
-    C.data .%= C.N
+    mod!(C.data, C.data, C.N)
 end
 
