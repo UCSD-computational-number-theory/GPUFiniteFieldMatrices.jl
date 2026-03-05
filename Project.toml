@@ -15,9 +15,11 @@ JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 StaticLint = "b3cc710f-9c33-5bdb-a03d-a94903873e97"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
 [compat]
+julia = "1.12"
 AllocCheck = "0.2.3"
 Aqua = "0.8.14"
 BenchmarkTools = "1.5.0"

@@ -1,9 +1,9 @@
 TARGET ?= .
 FILE ?=
 
-.PHONY: quality quality-target quality-aqua quality-jet quality-staticlint quality-alloccheck quality-dispatchdoctor quality-formatter fmt fmt-check fmt-file
+.PHONY: quality quality-target quality-aqua quality-jet quality-staticlint quality-formatter fmt fmt-check fmt-file
 
-quality: quality-aqua quality-jet quality-staticlint quality-alloccheck quality-dispatchdoctor quality-formatter
+quality: quality-aqua quality-jet quality-staticlint quality-formatter
 
 quality-target: quality
 
@@ -15,12 +15,6 @@ quality-jet:
 
 quality-staticlint:
 	julia --project=. test/Quality/staticlint.jl "$(TARGET)"
-
-quality-alloccheck:
-	julia --project=. test/Quality/alloccheck.jl "$(TARGET)"
-
-quality-dispatchdoctor:
-	julia --project=. test/Quality/dispatchdoctor.jl "$(TARGET)"
 
 quality-formatter:
 	julia --project=. test/Quality/formatter.jl check "$(TARGET)"

@@ -590,8 +590,8 @@ function inverse(A::CuModMatrix)
         ))
     end
 
-    U_inv = upper_triangular_inverse(U)
-    L_inv = lower_triangular_inverse(L)
+    U_inv = upper_triangular_inverse_no_copy(U)
+    L_inv = lower_triangular_inverse_no_copy(L)
 
     function _compute_A_inv(U_inv, L_inv, P, Q)
         apply_col_inv_perm!(P, L_inv)
@@ -874,14 +874,14 @@ function Base.copy!(B::CuModArray, A::CuModArray)
 end
 
 """
-    copyto!(dest::CuModArray, src::AbstractArray)
+    copyto!(dest::CuModArray, src::DenseArray)
 
 Copy the data from dest to src. This is useful for sending
 data to the gpu.
 
 Does not mod.
 """
-function Base.copyto!(dest::CuModArray{T}, src::AbstractArray{T}) where T
+function Base.copyto!(dest::CuModArray{T,D}, src::DenseArray{T,D}) where {T,D}
     if size(dest) != size(src)
         throw(CuModArraySizeMismatchException(
             "Matrix dimensions must match"
@@ -894,6 +894,11 @@ function Base.copyto!(dest::CuModArray{T}, src::AbstractArray{T}) where T
 
     #dataview = @view dest[data_inds]
     copyto!(dest.data,inds,src,inds)
+    return dest
+end
+
+function Base.copyto!(dest::CuModMatrix{T}, src::SparseArrays.CHOLMOD.Dense{T}) where {T<:Union{Float32, Float64, ComplexF32, ComplexF64}}
+    return copyto!(dest, Matrix(src))
 end
 
 
