@@ -23,6 +23,17 @@ include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
 
 include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
 include("CuModMatrix/triangular/substitution_inplace.jl")
+include("CuModMatrix/inverse/types.jl")
+include("CuModMatrix/inverse/mod_arith.jl")
+include("CuModMatrix/inverse/perm_vectors.jl")
+include("CuModMatrix/inverse/basecase_pluq.jl")
+include("CuModMatrix/inverse/rectangular_pluq.jl")
+include("CuModMatrix/inverse/trsm.jl")
+include("CuModMatrix/inverse/schur_update.jl")
+include("CuModMatrix/inverse/blocked_recursive_pluq.jl")
+include("CuModMatrix/inverse/extract.jl")
+include("CuModMatrix/inverse/validation.jl")
+include("CuModMatrix/inverse/api.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
@@ -50,5 +61,9 @@ export mod_inv
 export pluq_gpu_kernel
 export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
 export forward_sub_gpu_type_32, backward_sub_gpu_type_32
+export PLUQOptions, PLUQFactorization
+export pluq_new, pluq_new!, inverse_new, is_invertible_new
+export right_inverse_new, left_inverse_new
+export pluq_extract_L, pluq_extract_U, pluq_check_identity
 
 end
