@@ -1,0 +1,172 @@
+"""
+    _pluq_mod_t(x, N)
+
+Device-friendly modulo reduction returning the same element type as `x`.
+"""
+@inline function _pluq_mod_t(x::T, N::Int32) where {T}
+    v = Int64(x)
+    r = rem(v, Int64(N))
+    if r < 0
+        r += Int64(N)
+    end
+    return T(r)
+end
+
+"""
+    _pluq_mod_mul_t(a, b, N)
+
+Device-friendly modular multiplication returning the same element type.
+"""
+@inline function _pluq_mod_mul_t(a::T, b::T, N::Int32) where {T}
+    av = Int64(a)
+    bv = Int64(b)
+    r = rem(av * bv, Int64(N))
+    if r < 0
+        r += Int64(N)
+    end
+    return T(r)
+end
+
+"""
+    pluq_find_pivot_kernel!(A, pivot_slot, k, kend, N)
+
+Search for the first nonzero pivot in the active block `[k:kend, k:kend]`.
+Writes the earliest linearized position into `pivot_slot[1]`.
+"""
+function pluq_find_pivot_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
+    tid = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    span = kend - k + 1
+    total = span * span
+    stride = blockDim().x * gridDim().x
+    idx = tid
+    while idx <= total
+        joff = (idx - 1) ÷ span
+        ioff = (idx - 1) % span
+        i = k + ioff
+        j = k + joff
+        val = _pluq_mod_t(A[i, j], N)
+        if val != zero(eltype(A))
+            CUDA.@atomic pivot_slot[1] = min(pivot_slot[1], idx)
+        end
+        idx += stride
+    end
+    return
+end
+
+"""
+    pluq_swap_rows_kernel!(A, r1, r2, ncols)
+
+Swap two rows in a dense device matrix.
+"""
+function pluq_swap_rows_kernel!(A, r1::Int32, r2::Int32, ncols::Int32)
+    col = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+    while col <= ncols
+        tmp = A[r1, col]
+        A[r1, col] = A[r2, col]
+        A[r2, col] = tmp
+        col += stride
+    end
+    return
+end
+
+"""
+    pluq_swap_cols_kernel!(A, c1, c2, nrows)
+
+Swap two columns in a dense device matrix.
+"""
+function pluq_swap_cols_kernel!(A, c1::Int32, c2::Int32, nrows::Int32)
+    row = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = blockDim().x * gridDim().x
+    while row <= nrows
+        tmp = A[row, c1]
+        A[row, c1] = A[row, c2]
+        A[row, c2] = tmp
+        row += stride
+    end
+    return
+end
+
+"""
+    pluq_scale_column_kernel!(A, k, kend, invpivot, N)
+
+Scale `A[k+1:kend, k]` by `invpivot` modulo `N`.
+"""
+function pluq_scale_column_kernel!(A, k::Int32, kend::Int32, invpivot, N::Int32)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
+    stride = blockDim().x * gridDim().x
+    while i <= kend
+        A[i, k] = _pluq_mod_mul_t(A[i, k], invpivot, N)
+        i += stride
+    end
+    return
+end
+
+"""
+    pluq_rank1_update_kernel!(A, k, kend, N)
+
+Apply one elimination update step to the trailing active block.
+"""
+function pluq_rank1_update_kernel!(A, k::Int32, kend::Int32, N::Int32)
+    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
+    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y + k
+    if i <= kend && j <= kend
+        aik = A[i, k]
+        akj = A[k, j]
+        A[i, j] = _pluq_mod_t(A[i, j] - _pluq_mod_mul_t(aik, akj, N), N)
+    end
+    return
+end
+
+"""
+    pluq_basecase_gpu!(Adata, N, p, q, k0, kend, n)
+
+Perform in-place PLUQ elimination on a block `[k0:kend, k0:kend]` of `Adata`
+using CUDA kernels for pivot search, swaps, scaling, and rank-1 updates.
+Returns the rank contributed by this block.
+"""
+function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vector{Int}, k0::Int, kend::Int, n::Int) where {T}
+    rank = 0
+    n32 = Int32(n)
+    N32 = Int32(N)
+    threads = 256
+    maxspan = kend - k0 + 1
+    pivot_slot = CUDA.fill(Int32(maxspan * maxspan + 1), 1)
+    for k in k0:kend
+        kk = Int32(k)
+        kend32 = Int32(kend)
+        span = kend - k + 1
+        total = span * span
+        blocks = max(1, cld(total, threads))
+        CUDA.fill!(pivot_slot, Int32(total + 1))
+        @cuda threads=threads blocks=blocks pluq_find_pivot_kernel!(Adata, pivot_slot, kk, kend32, N32)
+        pivot_lin = Int(Array(@view pivot_slot[1:1])[1])
+        if pivot_lin > total
+            break
+        end
+        joff = (pivot_lin - 1) ÷ span
+        ioff = (pivot_lin - 1) % span
+        prow = k + ioff
+        pcol = k + joff
+        if prow != k
+            @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_rows_kernel!(Adata, Int32(k), Int32(prow), n32)
+            p[k], p[prow] = p[prow], p[k]
+        end
+        if pcol != k
+            @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_cols_kernel!(Adata, Int32(k), Int32(pcol), n32)
+            q[k], q[pcol] = q[pcol], q[k]
+        end
+        pivot = Int(Array(@view Adata[k:k, k:k])[1])
+        invpivot = convert(T, pluq_mod_inv(pivot, N))
+        if k < kend
+            @cuda threads=threads blocks=max(1, cld(kend - k, threads)) pluq_scale_column_kernel!(Adata, Int32(k), Int32(kend), invpivot, N32)
+            tx = 16
+            ty = 16
+            bx = max(1, cld(kend - k, tx))
+            by = max(1, cld(kend - k, ty))
+            @cuda threads=(tx, ty) blocks=(bx, by) pluq_rank1_update_kernel!(Adata, Int32(k), Int32(kend), N32)
+        end
+        rank += 1
+    end
+    return rank
+end
