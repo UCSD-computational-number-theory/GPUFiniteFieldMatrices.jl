@@ -7,6 +7,18 @@ using Unroll
 
 using GPUFiniteFieldMatrices
 
+include("CuModMatrix/basic_operations_test.jl")
+include("CuModMatrix/inplace_operations_test.jl")
+include("CuModMatrix/matmul_operations_test.jl")
+include("CuModMatrix/benchmark_test.jl")
+include("CuModMatrix/stripe_mul_test.jl")
+include("CuModMatrix/allocations_test.jl")
+include("CuModMatrix/timing_test.jl")
+include("CuModMatrix/de_rham_test.jl")
+include("CuModMatrix/permutation_test.jl")
+include("CuModMatrix/triangular_test.jl")
+include("CuModMatrix/inverse/runtests.jl")
+
 function run_all_tests()
     @testset "CuModMatrix.jl" begin
 
@@ -21,6 +33,10 @@ function run_all_tests()
 
         @testset "Permutations" begin
             test_permutations()
+        end
+
+        @testset "Inverse Rewrite" begin
+            test_inverse_rewrite()
         end
         
         @testset "GPU Matrix Type" begin
