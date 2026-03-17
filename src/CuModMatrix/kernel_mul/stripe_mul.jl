@@ -79,7 +79,7 @@ Matrix-vector multiplication based on stripes
 """
 #TODO: replayce CuVector{Float64} with padded custom type. 
 #the ".data" stuff won't work until then
-function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=nothing, maxopsOverride=true)
+function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, R=nothing, N=nothing, maxopsOverride=true)
 #TODO: add new signature that takes in custom M and N (and can copy the old one into new one)
 # so we can update the modulus but use the old bound for coeffs.
 
@@ -92,17 +92,21 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     elseif eltype(A.data) != eltype(z.data) || eltype(z.data) != eltype(x.data)
         throw(ArgumentError("Mismatched element types in matmul"))
     end # possibly also enforce that the eltypes are the same
+
+    if R==nothing
+        R = z.N
+    end
     
     if maxopsOverride == true
         if M == nothing
             if N == nothing
-                M = find_max_stripe_ops(eltype(A.data),A.N)
+                M = find_max_stripe_ops(eltype(A.data),R)
             else
-                M = find_max_stripe_ops(eltype(A.data),N)
+                M = find_max_stripe_ops(eltype(A.data),R)
             end
         end
     else
-        M = find_max_stripe_ops(eltype(A.data),A.N)
+        M = find_max_stripe_ops(eltype(A.data),R)
     end
 
     if N==nothing
@@ -110,7 +114,7 @@ function stripe_mul!(z::CuModVector,A::CuModMatrix,x::CuModVector; M=nothing, N=
     end
 
     if M < 1
-        throw(ArgumentError("cannot perform a single multiplication for modulus $(A.N) with datatype $(eltype(A.data))"))
+        throw(ArgumentError("cannot perform a single multiplication for modulus $(R) with datatype $(eltype(A.data))"))
     end
 
     if eltype(A.data) == Float64
