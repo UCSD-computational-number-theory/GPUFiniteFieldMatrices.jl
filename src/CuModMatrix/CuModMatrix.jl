@@ -808,7 +808,7 @@ end
 
 In-place matrix-vector multiplication: z = A * x mod N.
 """
-function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=nothing, maxopsOverride=true)
+function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; R=nothing, P=nothing, maxopsOverride=true)
     
     if (A.N != z.N || A.N != x.N)
         throw(CuModArrayModulusMismatchException(
@@ -826,7 +826,7 @@ function LinearAlgebra.mul!(z::CuModVector, A::CuModMatrix, x::CuModVector; P=no
         ))
     end
     
-        stripe_mul!(z, A, x; N=P, maxopsOverride=maxopsOverride)
+        stripe_mul!(z, A, x; R=R, N=P, maxopsOverride=maxopsOverride)
     return z
 end
 

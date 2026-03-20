@@ -148,19 +148,27 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     # if find_max_stripe_ops(eltype(A.data1.data), maxN) < size(A,1)
     #     error("Matrix is too big for a single matmul, this is currently not implemented")
     # end
-
+    #=
     tw = TILE_WIDTH
 
     totalsize = length(C.data1.data) # the vector length
 
     threads = tw
     blocks = totalsize ÷ tw
+    =#
     
-    A_cols = size(A.data,2)
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(A.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+    
+    #A_cols = size(A.data1,2)
     @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_1!(A.plan.data,
                                                                    A.data1.data,
                                                                    A.data2.data,
-                                                                   A_cols,
+                                                                   #A_cols,
                                                                    B.plan.data,
                                                                    B.data1.data,
                                                                    B.data2.data,
@@ -169,12 +177,21 @@ function KMatMul!(C::KaratsubaArray,A::KaratsubaArray,B::KaratsubaArray)
     # GPUFiniteFieldMatrices.add!(B.plan,B.data1,B.data2; mod_N=2*B.N1)
 
     # use gemm
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,P=A.N1^2,maxopsOverride=false)
 
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,P=((4*A.N1)^2),maxopsOverride=false)
-    GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,P=A.N1,maxopsOverride=false)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data1,A.data1,B.data1,R=A.N1,P=A.N1^2,maxopsOverride=false)
+
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(C.data2,A.plan,B.plan,R=(2*A.N1),P=((4*A.N1)^2),maxopsOverride=false)
+    GPUFiniteFieldMatrices.LinearAlgebra.mul!(B.plan,A.data2,B.data2,R=(A.N1),P=A.N1^2,maxopsOverride=false)
 
     
+    tw = GPUFiniteFieldMatrices.TILE_WIDTH
+
+    totalsize = length(C.data1.data)
+
+    threads = tw
+    blocks = totalsize ÷ tw
+
+
     @cuda threads=threads blocks=blocks karatsuba_matmul_kernel_2!(
                                                                    C.data1.data,
                                                                    C.data2.data,
