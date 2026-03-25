@@ -66,17 +66,34 @@ Find first nonzero pivot row in column `k` of augmented matrix.
 Internal kernel used by `inverse_new`.
 """
 function pluq_aug_find_pivot_kernel!(aug, pivot_slot, k::Int32, n::Int32, N::Int32)
-    idx = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    gtid = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    ltid = Int(threadIdx().x)
     span = n - k + 1
     total = span
     stride = blockDim().x * gridDim().x
+    local_min = Int32(n + 1)
+    idx = gtid
     while idx <= total
         i = k + idx - 1
         v = _pluq_mod_t(aug[i, k], N)
         if v != zero(eltype(aug))
-            CUDA.@atomic pivot_slot[1] = min(pivot_slot[1], i)
+            local_min = min(local_min, i)
         end
         idx += stride
+    end
+    smins = CuStaticSharedArray(Int32, 256)
+    smins[ltid] = local_min
+    sync_threads()
+    step = Int(blockDim().x) >>> 1
+    while step >= 1
+        if ltid <= step
+            smins[ltid] = min(smins[ltid], smins[ltid + step])
+        end
+        sync_threads()
+        step >>>= 1
+    end
+    if ltid == 1
+        CUDA.@atomic pivot_slot[1] = min(pivot_slot[1], smins[1])
     end
     return
 end
