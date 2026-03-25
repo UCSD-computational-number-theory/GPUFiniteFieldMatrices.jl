@@ -6,6 +6,7 @@ include("test_rank_and_q.jl")
 include("test_extensive.jl")
 include("test_rectangular.jl")
 include("test_phase0_regimes.jl")
+include("test_batched_tiny.jl")
 
 function test_inverse_rewrite()
     @testset "Mod Arithmetic" begin
@@ -43,5 +44,8 @@ function test_inverse_rewrite()
     end
     @testset "Phase0 Regime Matrix Grid" begin
         test_phase0_regime_matrix_grid()
+    end
+    @testset "Batched Tiny Kernels" begin
+        test_batched_tiny_kernels()
     end
 end
