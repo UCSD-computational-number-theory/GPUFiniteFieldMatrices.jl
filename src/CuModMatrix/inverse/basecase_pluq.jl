@@ -197,14 +197,16 @@ Perform in-place PLUQ elimination on a block `[k0:kend, k0:kend]` of `Adata`
 using CUDA kernels for pivot search, swaps, scaling, and rank-1 updates.
 Returns the rank contributed by this block.
 """
-function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vector{Int}, k0::Int, kend::Int, n::Int) where {T}
+function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vector{Int}, k0::Int, kend::Int, n::Int; options::PLUQOptions=PLUQOptions()) where {T}
     rank = 0
     n32 = Int32(n)
     N32 = Int32(N)
-    threads = 256
+    threads = min(256, max(32, 32 * options.nftb))
     maxspan = kend - k0 + 1
     pivot_slot = CUDA.fill(Int32(maxspan * maxspan + 1), 1)
     invpivot_slot = CUDA.zeros(T, 1)
+    locp = options.lazy_q ? collect(1:maxspan) : Int[]
+    locq = options.lazy_q ? collect(1:maxspan) : Int[]
     for k in k0:kend
         kk = Int32(k)
         kend32 = Int32(kend)
@@ -228,11 +230,23 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
         pcol = k + joff
         if prow != k
             @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_rows_kernel!(Adata, Int32(k), Int32(prow), n32)
-            p[k], p[prow] = p[prow], p[k]
+            if options.lazy_q
+                lock = k - k0 + 1
+                locprow = prow - k0 + 1
+                locp[lock], locp[locprow] = locp[locprow], locp[lock]
+            else
+                p[k], p[prow] = p[prow], p[k]
+            end
         end
         if pcol != k
             @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_cols_kernel!(Adata, Int32(k), Int32(pcol), n32)
-            q[k], q[pcol] = q[pcol], q[k]
+            if options.lazy_q
+                lock = k - k0 + 1
+                locpcol = pcol - k0 + 1
+                locq[lock], locq[locpcol] = locq[locpcol], locq[lock]
+            else
+                q[k], q[pcol] = q[pcol], q[k]
+            end
         end
         # Normalize pivot row/column step in packed LU form.
         @cuda threads=1 blocks=1 pluq_compute_invpivot_kernel!(invpivot_slot, Adata, Int32(k), N32)
@@ -245,6 +259,10 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
             @cuda threads=(tx, ty) blocks=(bx, by) pluq_rank1_update_kernel!(Adata, Int32(k), Int32(kend), N32)
         end
         rank += 1
+    end
+    if options.lazy_q
+        pluq_compose_segment!(p, k0, locp)
+        pluq_compose_segment!(q, k0, locq)
     end
     return rank
 end

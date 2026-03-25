@@ -131,6 +131,14 @@ function _time_gpu_call(f)
     return t
 end
 
+function _time_gpu_batch(f, batch)
+    t = @elapsed begin
+        f(batch)
+        CUDA.synchronize()
+    end
+    return t / length(batch)
+end
+
 function _time_cpu_call(f)
     t = @elapsed f()
     return t
@@ -161,6 +169,8 @@ function benchmark_inverse_suite(
     check_against_nemo::Bool=false,
     make_plot::Bool=true,
     plot_path::String="test/Experiments/inv_benchmark.png",
+    batch_count::Int=4,
+    compare_old::Bool=false,
     verbose::Bool=true
 )
     specs = normalize_specs(spec_tuples)
@@ -169,30 +179,34 @@ function benchmark_inverse_suite(
     end
     results = NamedTuple[]
     for spec in specs
-        A = random_one_sided_invertible_cumod(spec)
+        local_batch = (max(spec.rows, spec.cols) >= 1024) ? 1 : max(1, batch_count)
+        batch = [random_one_sided_invertible_cumod(spec) for _ in 1:local_batch]
+        A = batch[1]
         A_cpu = mod.(round.(Int, Array(A)), spec.p)
         nemo_inv = check_against_nemo && spec.rows == spec.cols ? nemo_inverse_matrix(A_cpu, spec.p) : nothing
         new_times = Float64[]
         old_times = Float64[]
         nemo_times = Float64[]
         for _ in 1:trials
-            t_new = _time_gpu_call(() -> spec.rows == spec.cols ? GPUFiniteFieldMatrices.inverse_new(A) : (spec.rows < spec.cols ? GPUFiniteFieldMatrices.right_inverse_new(A) : GPUFiniteFieldMatrices.left_inverse_new(A)))
-            t_old = spec.rows == spec.cols ? _time_gpu_call(() -> GPUFiniteFieldMatrices.inverse(A)) : NaN
+            t_new = _time_gpu_batch(B -> GPUFiniteFieldMatrices.inverse_new_batch(B), batch)
+            t_old = (compare_old && spec.rows == spec.cols) ? _time_gpu_call(() -> GPUFiniteFieldMatrices.inverse(A)) : NaN
             t_nemo = _time_cpu_call(() -> spec.rows == spec.cols ? nemo_inverse_matrix(A_cpu, spec.p) : nemo_is_invertible_with_inverse(A_cpu, spec.p))
             push!(new_times, t_new)
             push!(old_times, t_old)
             push!(nemo_times, t_nemo)
         end
-        Ainv_new = spec.rows == spec.cols ? GPUFiniteFieldMatrices.inverse_new(A) : (spec.rows < spec.cols ? GPUFiniteFieldMatrices.right_inverse_new(A) : GPUFiniteFieldMatrices.left_inverse_new(A))
-        Ainv_old = spec.rows == spec.cols ? GPUFiniteFieldMatrices.inverse(A) : nothing
+        Ainv_new = GPUFiniteFieldMatrices.inverse_new_batch([A])[1]
+        Ainv_old = (compare_old && spec.rows == spec.cols) ? GPUFiniteFieldMatrices.inverse(A) : nothing
         new_ok = true
-        old_ok = spec.rows == spec.cols
+        old_ok = compare_old && spec.rows == spec.cols
         if check_against_nemo
             if spec.rows == spec.cols
                 Ainv_new_cpu = mod.(round.(Int, Array(Ainv_new)), spec.p)
-                Ainv_old_cpu = mod.(round.(Int, Array(Ainv_old)), spec.p)
                 new_ok = Ainv_new_cpu == nemo_inv
-                old_ok = Ainv_old_cpu == nemo_inv
+                if compare_old
+                    Ainv_old_cpu = mod.(round.(Int, Array(Ainv_old)), spec.p)
+                    old_ok = Ainv_old_cpu == nemo_inv
+                end
             else
                 nres = nemo_is_invertible_with_inverse(A_cpu, spec.p)
                 new_ok = nres.invertible
@@ -205,10 +219,10 @@ function benchmark_inverse_suite(
             p=spec.p,
             elem_type=spec.elem_type,
             new_mean=mean(new_times),
-            old_mean=spec.rows == spec.cols ? mean(old_times) : NaN,
+            old_mean=(compare_old && spec.rows == spec.cols) ? mean(old_times) : NaN,
             nemo_mean=mean(nemo_times),
             new_median=median(new_times),
-            old_median=spec.rows == spec.cols ? median(old_times) : NaN,
+            old_median=(compare_old && spec.rows == spec.cols) ? median(old_times) : NaN,
             nemo_median=median(nemo_times),
             new_ok=new_ok,
             old_ok=old_ok
@@ -236,7 +250,9 @@ function benchmark_inverse_suite(
                 ylabel="time (s)",
                 title="Inverse benchmark: new vs old vs Nemo"
             )
-            plot!(plt, x, y_old; label="inverse old (GPU square-only)", color=:red, marker=:square, linewidth=2)
+            if compare_old
+                plot!(plt, x, y_old; label="inverse old (GPU square-only)", color=:red, marker=:square, linewidth=2)
+            end
             plot!(plt, x, y_nemo; label="Nemo (CPU)", color=:green, marker=:diamond, linewidth=2)
             savefig(plt, plot_path)
             if verbose
@@ -274,10 +290,43 @@ function run_default_inverse_benchmark(; check_against_nemo::Bool=false, trials:
         trials=trials,
         warmup=warmup,
         check_against_nemo=check_against_nemo,
-        make_plot=make_plot
+        make_plot=make_plot,
+        compare_old=false
+    )
+end
+
+function run_fastest_vs_nemo_benchmark(; check_against_nemo::Bool=false, trials::Int=5, warmup::Bool=true, make_plot::Bool=true, batch_count::Int=4)
+    specs = [
+        (16, 16, 101, :FP32),
+        (16, 16, 101, :FP64),
+        (64, 64, 101, :FP32),
+        (64, 64, 101, :FP64),
+        (256, 256, 101, :FP32),
+        (256, 256, 101, :FP64),
+        (256, 640, 101, :FP32),
+        (256, 640, 101, :FP64),
+        (1024, 1024, 101, :FP32),
+        (1024, 1024, 101, :FP64),
+        (2048, 2048, 101, :FP32),
+        (2048, 2048, 101, :FP64),
+        (4096, 4096, 101, :FP32),
+        (4096, 4096, 101, :FP64),
+        (8192, 8192, 101, :FP32),
+        (8192, 8192, 101, :FP64),
+        (16384, 16384, 101, :FP32),
+        (16384, 16384, 101, :FP64),
+    ]
+    return benchmark_inverse_suite(
+        specs;
+        trials=trials,
+        warmup=warmup,
+        check_against_nemo=check_against_nemo,
+        make_plot=make_plot,
+        batch_count=batch_count,
+        compare_old=false
     )
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    run_default_inverse_benchmark()
+    run_fastest_vs_nemo_benchmark()
 end
