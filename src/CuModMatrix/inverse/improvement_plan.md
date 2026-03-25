@@ -101,6 +101,8 @@ Expected impact: high on medium+ sizes.
 
 ### Phase 5: Lazy swap and tunable concurrency
 
+Status: implemented (initial production pass).
+
 1. Implement practical lazy swap strategy:
    - delay row/column materialization
    - maintain local mapping vectors during factorization
@@ -117,6 +119,13 @@ Target files:
 - [`types.jl`](/home/ryanyb/GPUFiniteFieldMatrices.jl/src/CuModMatrix/inverse/types.jl)
 
 Expected impact: medium-high for batched tiny matrices; medium for larger sizes.
+
+Implemented details:
+
+- `lazy_q` now performs local permutation accumulation in basecase and composes once per segment.
+- Added tunable `nftb` in `PLUQOptions` and wired it to basecase thread selection.
+- Added batched API entry points (`inverse_new_batch`, `pluq_new_batch`) to support low-overhead multi-matrix timing and execution flows.
+- Added `run_phase5_benchmark()` in experiments for direct Phase4→Phase5 speedup export.
 
 ---
 
