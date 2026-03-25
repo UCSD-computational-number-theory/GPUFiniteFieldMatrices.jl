@@ -61,11 +61,13 @@ Search for the first nonzero pivot in the active block `[k:kend, k:kend]`.
 Writes the earliest linearized position into `pivot_slot[1]`.
 """
 function pluq_find_pivot_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
-    tid = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    gtid = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    ltid = Int(threadIdx().x)
     span = kend - k + 1
     total = span * span
     stride = blockDim().x * gridDim().x
-    idx = tid
+    idx = gtid
+    local_min = Int32(total + 1)
     while idx <= total
         joff = (idx - 1) ÷ span
         ioff = (idx - 1) % span
@@ -73,9 +75,23 @@ function pluq_find_pivot_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
         j = k + joff
         val = _pluq_mod_t(A[i, j], N)
         if val != zero(eltype(A))
-            CUDA.@atomic pivot_slot[1] = min(pivot_slot[1], idx)
+            local_min = min(local_min, idx)
         end
         idx += stride
+    end
+    smins = CuStaticSharedArray(Int32, 256)
+    smins[ltid] = local_min
+    sync_threads()
+    step = Int(blockDim().x) >>> 1
+    while step >= 1
+        if ltid <= step
+            smins[ltid] = min(smins[ltid], smins[ltid + step])
+        end
+        sync_threads()
+        step >>>= 1
+    end
+    if ltid == 1
+        CUDA.@atomic pivot_slot[1] = min(pivot_slot[1], smins[1])
     end
     return
 end
