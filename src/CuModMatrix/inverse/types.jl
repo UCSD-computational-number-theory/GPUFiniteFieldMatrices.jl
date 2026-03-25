@@ -7,18 +7,20 @@ Fields:
 - `blocksize`: recursive panel width.
 - `basecase`: switch to basecase kernel when segment length is small.
 - `pivot_policy`: pivot policy tag (`:first_nonzero` currently).
-- `lazy_q`: reserved toggle for lazy-column-permutation strategy.
+- `lazy_q`: enable lazy permutation-vector composition inside basecase.
+- `nftb`: tunable tiny-kernel thread grouping factor (32 * `nftb`, clamped).
 """
 struct PLUQOptions
     blocksize::Int
     basecase::Int
     pivot_policy::Symbol
     lazy_q::Bool
+    nftb::Int
     check_prime::Bool
 end
 
 """
-    PLUQOptions(; blocksize=64, basecase=32, pivot_policy=:first_nonzero, lazy_q=true, check_prime=true)
+    PLUQOptions(; blocksize=64, basecase=32, pivot_policy=:first_nonzero, lazy_q=true, nftb=8, check_prime=false)
 
 Construct `PLUQOptions` with validated positive block sizes.
 """
@@ -27,12 +29,13 @@ function PLUQOptions(;
     basecase::Int=32,
     pivot_policy::Symbol=:first_nonzero,
     lazy_q::Bool=true,
+    nftb::Int=8,
     check_prime::Bool=false
 )
-    if blocksize < 1 || basecase < 1
-        throw(ArgumentError("blocksize and basecase must be positive"))
+    if blocksize < 1 || basecase < 1 || nftb < 1
+        throw(ArgumentError("blocksize, basecase, and nftb must be positive"))
     end
-    return PLUQOptions(blocksize, basecase, pivot_policy, lazy_q, check_prime)
+    return PLUQOptions(blocksize, basecase, pivot_policy, lazy_q, nftb, check_prime)
 end
 
 """

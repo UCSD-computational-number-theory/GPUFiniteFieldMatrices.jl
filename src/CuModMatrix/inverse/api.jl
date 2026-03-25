@@ -361,3 +361,40 @@ function left_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     Ldata = permutedims(R.data, (2, 1))
     return CuModMatrix(Ldata, A.N; new_size=(n, m))
 end
+
+"""
+    pluq_new_batch(mats; options=PLUQOptions())
+
+Run `pluq_new` across a batch of matrices and return factorization objects.
+"""
+function pluq_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
+    isempty(mats) && return Any[]
+    firstF = pluq_new(mats[1], options=options)
+    out = Vector{typeof(firstF)}(undef, length(mats))
+    out[1] = firstF
+    for i in 2:length(mats)
+        out[i] = pluq_new(mats[i], options=options)
+    end
+    return out
+end
+
+"""
+    inverse_new_batch(mats; options=PLUQOptions())
+
+Run the fastest inverse path across a batch. For rectangular matrices this
+dispatches to one-sided inverses.
+"""
+function inverse_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
+    out = Vector{CuModMatrix}(undef, length(mats))
+    for i in eachindex(mats)
+        A = mats[i]
+        if rows(A) == cols(A)
+            out[i] = inverse_new(A, options=options)
+        elseif rows(A) < cols(A)
+            out[i] = right_inverse_new(A, options=options)
+        else
+            out[i] = left_inverse_new(A, options=options)
+        end
+    end
+    return out
+end
