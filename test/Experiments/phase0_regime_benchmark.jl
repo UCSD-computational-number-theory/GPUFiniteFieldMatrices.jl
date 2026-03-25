@@ -256,6 +256,34 @@ function run_phase1_benchmark(;
     return rows
 end
 
+function run_phase2_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/Phase2_benchmark.csv",
+    baseline_csv_path::String="test/Experiments/Phase1_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/Phase2_speedup_vs_Phase1.csv"
+)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        export_csv=export_csv,
+        csv_path=csv_path,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
     run_phase0_regime_benchmark()
 end
