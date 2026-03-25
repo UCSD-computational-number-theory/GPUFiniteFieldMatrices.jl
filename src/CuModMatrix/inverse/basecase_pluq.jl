@@ -96,6 +96,27 @@ function pluq_find_pivot_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
     return
 end
 
+function pluq_find_pivot_warp_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
+    lane = Int(threadIdx().x)
+    span = kend - k + 1
+    if lane > 32
+        return
+    end
+    for joff in 0:(span - 1)
+        row = k + lane - 1
+        pred = lane <= span && _pluq_mod_t(A[row, k + joff], N) != zero(eltype(A))
+        bits = CUDA.vote_ballot_sync(CUDA.FULL_MASK, pred)
+        if bits != UInt32(0)
+            if lane == 1
+                first_lane = trailing_zeros(bits) + 1
+                pivot_slot[1] = Int32(joff * span + first_lane)
+            end
+            return
+        end
+    end
+    return
+end
+
 """
     pluq_swap_rows_kernel!(A, r1, r2, ncols)
 
@@ -189,9 +210,13 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
         kend32 = Int32(kend)
         span = kend - k + 1
         total = span * span
-        blocks = max(1, cld(total, threads))
         CUDA.fill!(pivot_slot, Int32(total + 1))
-        @cuda threads=threads blocks=blocks pluq_find_pivot_kernel!(Adata, pivot_slot, kk, kend32, N32)
+        if span <= 32
+            @cuda threads=32 blocks=1 pluq_find_pivot_warp_kernel!(Adata, pivot_slot, kk, kend32, N32)
+        else
+            blocks = max(1, cld(total, threads))
+            @cuda threads=threads blocks=blocks pluq_find_pivot_kernel!(Adata, pivot_slot, kk, kend32, N32)
+        end
         pivot_lin = Int(Array(@view pivot_slot[1:1])[1])
         if pivot_lin > total
             break
