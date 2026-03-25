@@ -51,10 +51,10 @@ function test_rectangular_rank_and_failures()
     Awide = CuModMatrix([1 2 3 4; 2 4 6 8], p)
     Fwide = pluq_new(Awide)
     @test Fwide.rank == 1
-    @test_throws InverseNotDefinedException right_inverse_new(Awide)
+    @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException right_inverse_new(Awide)
 
     Atall = CuModMatrix([1 2; 2 4; 3 6], p)
     Ftall = pluq_new(Atall)
     @test Ftall.rank == 1
-    @test_throws InverseNotDefinedException left_inverse_new(Atall)
+    @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException left_inverse_new(Atall)
 end

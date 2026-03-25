@@ -72,18 +72,17 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int)
     rank = 0
     threads = 256
     N32 = Int32(N)
-    maxspan = max(1, (m - 1 + 1) * (n - 1 + 1))
-    pivot_slot = CUDA.fill(Int32(maxspan + 1), 1)
+    m32 = Int32(m)
+    n32 = Int32(n)
+    pivot_slot = CUDA.fill(Int32(max(1, m * n + 1)), 1)
     for k in 1:rmax
         span_r = m - k + 1
         span_c = n - k + 1
-        if span_r <= 0 || span_c <= 0
-            break
-        end
         total = span_r * span_c
         CUDA.fill!(pivot_slot, Int32(total + 1))
         blocks = max(1, cld(total, threads))
-        @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, Int32(k), Int32(m), Int32(n), N32)
+        k32 = Int32(k)
+        @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
         pivlin = Int(Array(@view pivot_slot[1:1])[1])
         if pivlin > total
             break
@@ -93,24 +92,24 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int)
         prow = k + ioff
         pcol = k + joff
         if prow != k
-            @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_rows_kernel!(Adata, Int32(k), Int32(prow), Int32(n))
+            @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_rows_kernel!(Adata, k32, Int32(prow), n32)
             p[k], p[prow] = p[prow], p[k]
         end
         if pcol != k
-            @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(Adata, Int32(k), Int32(pcol), Int32(m))
+            @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(Adata, k32, Int32(pcol), m32)
             q[k], q[pcol] = q[pcol], q[k]
         end
         piv = Int(Array(@view Adata[k:k, k:k])[1])
         invpiv = convert(T, pluq_mod_inv(piv, N))
         if k < m
-            @cuda threads=threads blocks=max(1, cld(m - k, threads)) pluq_scale_column_rect_kernel!(Adata, Int32(k), Int32(m), invpiv, N32)
+            @cuda threads=threads blocks=max(1, cld(m - k, threads)) pluq_scale_column_rect_kernel!(Adata, k32, m32, invpiv, N32)
         end
-        if k < m && k < n
+        if k < n
             tx = 16
             ty = 16
             bx = max(1, cld(n - k, tx))
             by = max(1, cld(m - k, ty))
-            @cuda threads=(tx, ty) blocks=(bx, by) pluq_rank1_update_rect_kernel!(Adata, Int32(k), Int32(m), Int32(n), N32)
+            @cuda threads=(tx, ty) blocks=(bx, by) pluq_rank1_update_rect_kernel!(Adata, k32, m32, n32, N32)
         end
         rank += 1
     end

@@ -3,6 +3,13 @@
 
 Recursively apply blocked PLUQ on active index interval `[start, stop]`.
 Uses basecase elimination, triangular solves, and Schur updates on GPU.
+
+The recursion implements:
+1. Base/panel PLUQ on the diagonal block
+2. `L11 * U12 = A12` (left TRSM)
+3. `L21 * U11 = A21` (right TRSM)
+4. Schur update `A22 -= L21*U12`
+5. Recurse on the trailing block
 """
 function pluq_blocked_recursive_gpu!(Adata::CuArray{T,2}, N::Int, opts::PLUQOptions, p::Vector{Int}, q::Vector{Int}, start::Int, stop::Int, n::Int) where {T}
     if start > stop

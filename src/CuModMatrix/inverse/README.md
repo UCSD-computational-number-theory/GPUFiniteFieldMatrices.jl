@@ -187,3 +187,56 @@ ok = pluq_check_identity(F, A)
 - The decomposition and inversion paths are GPU-kernel based.
 - Existing `CuModMatrix` arithmetic (`mul!`, `sub!`, etc.) is reused to avoid redundant kernel code.
 - Validation and extraction are also implemented through GPU buffers and kernels in this folder.
+
+## Internal Augmented-Matrix Kernels
+
+`api.jl` includes kernels that initialize and update augmented systems (`[A|I]`).
+These are internal implementation kernels used by:
+
+- `inverse_new` (square Gauss-Jordan path)
+- `right_inverse_new` (rectangular one-sided solve path)
+
+They are not separately exposed public APIs; they exist to keep hot loops on GPU.
+
+## Typical Kernel Call Flow
+
+### `inverse_new(A)` for square `n x n`
+
+1. `pluq_init_aug_kernel!` builds `[A | I_n]` in padded GPU memory.
+2. For each `k=1:n`:
+   - `pluq_aug_find_pivot_kernel!` finds a nonzero pivot row in column `k`.
+   - `pluq_swap_rows_kernel!` swaps rows if needed.
+   - `pluq_aug_scale_row_kernel!` normalizes pivot row.
+   - `pluq_aug_elim_kernel!` eliminates column `k` from all other rows.
+3. `pluq_copy_block_kernel!` copies the right block into the inverse output.
+
+### `pluq_new(A)` for square matrices
+
+1. `pluq_blocked_recursive_gpu!` enters recursive blocked factorization.
+2. Per recursion node:
+   - `pluq_basecase_gpu!` (panel/base block factorization)
+   - `pluq_trsm_left_lower_unit_gpu!`
+   - `pluq_trsm_right_upper_gpu!`
+   - `pluq_schur_update_gpu!`
+3. Recurse on trailing Schur complement until `basecase`.
+
+### `pluq_new(A)` for rectangular matrices
+
+1. `pluq_rectangular_rank_gpu!` runs rank-revealing elimination directly:
+   - `pluq_find_pivot_rect_kernel!`
+   - `pluq_swap_rows_kernel!` / `pluq_swap_cols_kernel!`
+   - `pluq_scale_column_rect_kernel!`
+   - `pluq_rank1_update_rect_kernel!`
+2. Returns `(p, q, rank)` for the rectangular matrix.
+
+## Current Improvement Backlog
+
+The current implementation is correct and modular, but there are clear next
+optimizations aligned with HPDC/ICCS guidance:
+
+1. Merge square/rectangular pivot search into a single generic kernel path.
+2. Keep `q` permutation lazy deeper into TRSM/Schur paths to reduce column swaps.
+3. Replace host scalar pivot reads (`Array(@view ...)`) with tiny device reductions.
+4. Batch small panel kernels with CUDA graphs for lower launch overhead.
+5. Add device-side permutation composition for `p`/`q` to remove host updates.
+6. Add specialized micro-kernels for tiny basecases (8/16/32) with shared-memory staging.
