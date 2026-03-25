@@ -11,6 +11,12 @@ end
     pluq_inverse_perm(p)
 
 Compute the inverse permutation of `p`.
+
+Example:
+```julia
+p = [3, 1, 2]
+pluq_inverse_perm(p) == [2, 3, 1]
+```
 """
 function pluq_inverse_perm(p::Vector{Int})
     pinv = Vector{Int}(undef, length(p))
@@ -23,7 +29,17 @@ end
 """
     pluq_compose_segment!(perm, offset, locperm)
 
-Compose a local permutation `locperm` into `perm[offset:offset+length(locperm)-1]`.
+Compose a local gather permutation into a segment of a global gather vector.
+
+If `seg = perm[offset:last]`, this performs:
+`seg_new[i] = seg_old[locperm[i]]`.
+
+Example:
+```julia
+perm = [1, 2, 3, 4, 5]
+pluq_compose_segment!(perm, 2, [2, 1, 3])
+perm == [1, 3, 2, 4, 5]
+```
 """
 function pluq_compose_segment!(perm::Vector{Int}, offset::Int, locperm::Vector{Int})
     lastidx = offset + length(locperm) - 1

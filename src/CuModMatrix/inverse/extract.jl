@@ -59,10 +59,11 @@ Materialize explicit `L` on GPU from packed `F.LU`.
 """
 function pluq_extract_L(F::PLUQFactorization)
     n = rows(F.LU)
+    n32 = Int32(n)
     L = GPUFiniteFieldMatrices.zeros(eltype(F.LU.data), n, n, F.LU.N)
     tx = 16
     ty = 16
-    @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_extract_l_kernel!(L.data, F.LU.data, Int32(n))
+    @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_extract_l_kernel!(L.data, F.LU.data, n32)
     return L
 end
 
@@ -70,12 +71,19 @@ end
     pluq_extract_U(F)
 
 Materialize explicit `U` on GPU from packed `F.LU`.
+
+Example:
+```julia
+F = pluq_new(A)
+U = pluq_extract_U(F)
+```
 """
 function pluq_extract_U(F::PLUQFactorization)
     n = rows(F.LU)
+    n32 = Int32(n)
     U = GPUFiniteFieldMatrices.zeros(eltype(F.LU.data), n, n, F.LU.N)
     tx = 16
     ty = 16
-    @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_extract_u_kernel!(U.data, F.LU.data, Int32(n))
+    @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_extract_u_kernel!(U.data, F.LU.data, n32)
     return U
 end

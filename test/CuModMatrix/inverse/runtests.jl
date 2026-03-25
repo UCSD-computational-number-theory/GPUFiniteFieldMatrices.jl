@@ -5,6 +5,7 @@ include("test_api_smoke.jl")
 include("test_rank_and_q.jl")
 include("test_extensive.jl")
 include("test_rectangular.jl")
+include("test_phase0_regimes.jl")
 
 function test_inverse_rewrite()
     @testset "Mod Arithmetic" begin
@@ -39,5 +40,8 @@ function test_inverse_rewrite()
     end
     @testset "Rectangular Rank And Failures" begin
         test_rectangular_rank_and_failures()
+    end
+    @testset "Phase0 Regime Matrix Grid" begin
+        test_phase0_regime_matrix_grid()
     end
 end
