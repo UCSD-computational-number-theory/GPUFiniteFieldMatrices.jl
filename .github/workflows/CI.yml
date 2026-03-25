@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        version:
+          - "1.12"
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+          arch: x64
+
+      - uses: julia-actions/cache@v2
+
+      - name: Instantiate project
+        shell: bash
+        run: |
+          julia --project=. -e '
+            using Pkg
+            Pkg.instantiate()
+          '
+
+      - name: Run tests
+        shell: bash
+        run: |
+          julia --project=. -e '
+            using Pkg
+            Pkg.test()
+          '
