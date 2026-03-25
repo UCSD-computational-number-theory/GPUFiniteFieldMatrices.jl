@@ -25,7 +25,7 @@ Xr = right_inverse_new(B)  # B * Xr = I
 
 ### `types.jl`
 
-- `PLUQOptions(; blocksize, basecase, pivot_policy, lazy_q, check_prime)`
+- `PLUQOptions(; blocksize, basecase, pivot_policy, lazy_q, nftb, check_prime)`
 - `PLUQFactorization`
 
 Example:
@@ -40,8 +40,9 @@ Option meanings:
 - `blocksize`: panel size used by recursive blocked PLUQ.
 - `basecase`: recursion stop threshold for tiny-block basecase kernel.
 - `pivot_policy`: pivoting policy selector (currently first-nonzero behavior).
-- `lazy_q`: intended switch for lazy column-permutation strategy.
-- `check_prime`: verifies modulus primality before factoring/inversion.
+- `lazy_q`: lazy permutation-vector composition in basecase path.
+- `nftb`: tiny-kernel thread-group tuning factor.
+- `check_prime`: optional modulus primality check flag (default off).
 
 ### `mod_arith.jl`
 
@@ -50,7 +51,6 @@ Option meanings:
 - `pluq_mod_sub(a, b, N)`
 - `pluq_mod_mul(a, b, N)`
 - `pluq_mod_inv(a, N)`
-- `pluq_is_prime(n)`
 
 Example:
 
@@ -144,6 +144,16 @@ p, q, rank = pluq_blocked_gpu!(A.data, A.N, opts, rows(A))
 - `inverse_new(A; options=PLUQOptions())`
 - `right_inverse_new(A; options=PLUQOptions())`
 - `left_inverse_new(A; options=PLUQOptions())`
+- `pluq_new_batch(mats; options=PLUQOptions())`
+- `inverse_new_batch(mats; options=PLUQOptions())`
+- `pluq_batched_4x4!(mats)`
+- `pluq_batched_8x8!(mats)`
+- `pluq_batched_16x16!(mats)`
+- `pluq_batched_32x32!(mats)`
+- `inverse_batched_4x4!(mats)`
+- `inverse_batched_8x8!(mats)`
+- `inverse_batched_16x16!(mats)`
+- `inverse_batched_32x32!(mats)`
 
 Example:
 
@@ -151,6 +161,8 @@ Example:
 F = pluq_new(A)
 Ainv = inverse_new(A)
 Xr = right_inverse_new(CuModMatrix([1 2 3; 0 1 4], 101))
+batch = [CuModMatrix(Matrix{Float32}(I, 8, 8), 101) for _ in 1:32]
+invs = inverse_batched_8x8!(batch)
 ```
 
 ### `extract.jl`
@@ -237,6 +249,7 @@ optimizations aligned with HPDC/ICCS guidance:
 1. Merge square/rectangular pivot search into a single generic kernel path.
 2. Keep `q` permutation lazy deeper into TRSM/Schur paths to reduce column swaps.
 3. Replace host scalar pivot reads (`Array(@view ...)`) with tiny device reductions.
-4. Batch small panel kernels with CUDA graphs for lower launch overhead.
+4. Expand CUDA graph-captured launch chains for fixed-shape loops.
+5. Tune tiny batched kernels for 4/8/16/32 with register/shared variants.
 5. Add device-side permutation composition for `p`/`q` to remove host updates.
 6. Add specialized micro-kernels for tiny basecases (8/16/32) with shared-memory staging.

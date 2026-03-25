@@ -368,6 +368,20 @@ end
 Run `pluq_new` across a batch of matrices and return factorization objects.
 """
 function pluq_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
+    if !isempty(mats)
+        n = rows(mats[1])
+        if n == cols(mats[1]) && all(A -> rows(A) == n && cols(A) == n, mats)
+            if n == 4
+                return pluq_batched_4x4!(mats)
+            elseif n == 8
+                return pluq_batched_8x8!(mats)
+            elseif n == 16
+                return pluq_batched_16x16!(mats)
+            elseif n == 32
+                return pluq_batched_32x32!(mats)
+            end
+        end
+    end
     isempty(mats) && return Any[]
     firstF = pluq_new(mats[1], options=options)
     out = Vector{typeof(firstF)}(undef, length(mats))
@@ -385,6 +399,20 @@ Run the fastest inverse path across a batch. For rectangular matrices this
 dispatches to one-sided inverses.
 """
 function inverse_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
+    if !isempty(mats)
+        n = rows(mats[1])
+        if n == cols(mats[1]) && all(A -> rows(A) == n && cols(A) == n, mats)
+            if n == 4
+                return inverse_batched_4x4!(mats)
+            elseif n == 8
+                return inverse_batched_8x8!(mats)
+            elseif n == 16
+                return inverse_batched_16x16!(mats)
+            elseif n == 32
+                return inverse_batched_32x32!(mats)
+            end
+        end
+    end
     out = Vector{CuModMatrix}(undef, length(mats))
     for i in eachindex(mats)
         A = mats[i]
