@@ -63,6 +63,7 @@ export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
 export forward_sub_gpu_type_32, backward_sub_gpu_type_32
 export PLUQOptions, PLUQFactorization
 export pluq_new, pluq_new!, inverse_new, is_invertible_new
+export pluq_new_batch, inverse_new_batch
 export right_inverse_new, left_inverse_new
 export pluq_extract_L, pluq_extract_U, pluq_check_identity
 

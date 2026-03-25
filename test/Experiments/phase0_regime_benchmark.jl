@@ -162,7 +162,8 @@ function run_phase0_regime_benchmark(;
     verbose::Bool=true,
     export_csv::Bool=true,
     csv_path::String="test/Experiments/Phase0_benchmark.csv",
-    batch_count::Int=4
+    batch_count::Int=4,
+    options::PLUQOptions=PLUQOptions()
 )
     rng = Random.MersenneTwister(seed)
     if warmup
@@ -190,14 +191,14 @@ function run_phase0_regime_benchmark(;
             t_inv = Float64[]
             for _ in 1:trials
                 try
-                    push!(t_pluq, _time_gpu_batched(pluq_new, batch))
+                    push!(t_pluq, _time_gpu_batched(A -> pluq_new(A, options=options), batch))
                 catch
                     push!(t_pluq, NaN)
                 end
                 if shape == :square
                     if reg.run_inverse
                         try
-                            push!(t_inv, _time_gpu_batched(inverse_new, batch))
+                            push!(t_inv, _time_gpu_batched(A -> inverse_new(A, options=options), batch))
                         catch
                             push!(t_inv, NaN)
                         end
@@ -207,7 +208,7 @@ function run_phase0_regime_benchmark(;
                 else
                     if reg.run_inverse
                         try
-                            push!(t_inv, _time_gpu_batched(right_inverse_new, batch))
+                            push!(t_inv, _time_gpu_batched(A -> right_inverse_new(A, options=options), batch))
                         catch
                             push!(t_inv, NaN)
                         end
@@ -354,6 +355,38 @@ function run_phase4_benchmark(;
         export_csv=export_csv,
         csv_path=csv_path,
         batch_count=batch_count,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
+end
+
+function run_phase5_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/Phase5_benchmark.csv",
+    batch_count::Int=8,
+    baseline_csv_path::String="test/Experiments/Phase4_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/Phase5_speedup_vs_Phase4.csv"
+)
+    phase5_opts = PLUQOptions(lazy_q=true, nftb=8)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        export_csv=export_csv,
+        csv_path=csv_path,
+        batch_count=batch_count,
+        options=phase5_opts,
     )
     if export_speedup_csv && isfile(baseline_csv_path)
         outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)

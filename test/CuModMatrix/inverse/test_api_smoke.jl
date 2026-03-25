@@ -15,4 +15,15 @@ function test_api_smoke()
     I1 = mod.(Array(A * Ainv), N)
     expected = Matrix{eltype(I1)}([1 0 0; 0 1 0; 0 0 1])
     @test I1 == expected
+
+    opts = PLUQOptions(lazy_q=true, nftb=8)
+    F2 = pluq_new(A, options=opts)
+    @test F2.rank == 3
+    @test pluq_check_identity(F2, A)
+
+    batch = [A, A]
+    invs = inverse_new_batch(batch, options=opts)
+    @test length(invs) == 2
+    I2 = mod.(Array(A * invs[1]), N)
+    @test I2 == expected
 end
