@@ -1,7 +1,13 @@
 """
     PLUQOptions
 
-Configuration for the new GPU PLUQ path.
+Configuration for the GPU PLUQ path.
+
+Fields:
+- `blocksize`: recursive panel width.
+- `basecase`: switch to basecase kernel when segment length is small.
+- `pivot_policy`: pivot policy tag (`:first_nonzero` currently).
+- `lazy_q`: reserved toggle for lazy-column-permutation strategy.
 """
 struct PLUQOptions
     blocksize::Int
@@ -21,7 +27,7 @@ function PLUQOptions(;
     basecase::Int=32,
     pivot_policy::Symbol=:first_nonzero,
     lazy_q::Bool=true,
-    check_prime::Bool=true
+    check_prime::Bool=false
 )
     if blocksize < 1 || basecase < 1
         throw(ArgumentError("blocksize and basecase must be positive"))

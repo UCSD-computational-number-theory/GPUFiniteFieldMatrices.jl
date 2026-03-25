@@ -24,7 +24,8 @@ end
 
 Kernel for one column `j` of right upper-triangular solve on trailing rows.
 """
-function pluq_trsm_right_kernel!(A, j::Int32, istart::Int32, n::Int32, kend::Int32, N::Int32, invdiag)
+function pluq_trsm_right_kernel!(A, j::Int32, istart::Int32, n::Int32, kend::Int32, N::Int32, invdiag_slot)
+    invdiag = invdiag_slot[1]
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + istart - 1
     stride = blockDim().x * gridDim().x
     while i <= n
@@ -40,11 +41,26 @@ function pluq_trsm_right_kernel!(A, j::Int32, istart::Int32, n::Int32, kend::Int
     return
 end
 
+function pluq_compute_invdiag_kernel!(invdiag_slot, A, j::Int32, N::Int32)
+    if blockIdx().x == 1 && threadIdx().x == 1
+        invdiag_slot[1] = _pluq_mod_inv_t(A[j, j], N)
+    end
+    return
+end
+
 """
     pluq_trsm_left_lower_unit_gpu!(Adata, N, k0, kend, n)
 
 Compute the left solve on trailing block columns:
 `L11 * U12 = A12`, writing `U12` in place in `Adata`.
+
+`L11` is interpreted as unit-lower from the packed LU panel.
+Rows `k0:kend` are solved independently over columns `kend+1:n`.
+
+Example:
+```julia
+pluq_trsm_left_lower_unit_gpu!(A.data, A.N, 1, 16, rows(A))
+```
 """
 function pluq_trsm_left_lower_unit_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::Int, n::Int) where {T}
     if kend >= n
@@ -52,8 +68,11 @@ function pluq_trsm_left_lower_unit_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, ke
     end
     threads = 256
     N32 = Int32(N)
+    n32 = Int32(n)
+    jstart32 = Int32(kend + 1)
+    k032 = Int32(k0)
     for i in k0:kend
-        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_left_kernel!(Adata, Int32(i), Int32(kend + 1), Int32(n), Int32(k0), N32)
+        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_left_kernel!(Adata, Int32(i), jstart32, n32, k032, N32)
     end
     return
 end
@@ -63,6 +82,14 @@ end
 
 Compute the right solve on trailing block rows:
 `L21 * U11 = A21`, writing `L21` in place in `Adata`.
+
+`U11` is interpreted as upper-triangular from packed LU panel.
+Columns `kend:-1:k0` are solved backward over rows `kend+1:n`.
+
+Example:
+```julia
+pluq_trsm_right_upper_gpu!(A.data, A.N, 1, 16, rows(A))
+```
 """
 function pluq_trsm_right_upper_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::Int, n::Int) where {T}
     if kend >= n
@@ -70,10 +97,14 @@ function pluq_trsm_right_upper_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::
     end
     threads = 256
     N32 = Int32(N)
+    n32 = Int32(n)
+    kend32 = Int32(kend)
+    istart32 = Int32(kend + 1)
+    invdiag_slot = CUDA.zeros(T, 1)
     for j in kend:-1:k0
-        diag = Int(Array(@view Adata[j:j, j:j])[1])
-        invdiag = convert(T, pluq_mod_inv(diag, N))
-        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_right_kernel!(Adata, Int32(j), Int32(kend + 1), Int32(n), Int32(kend), N32, invdiag)
+        j32 = Int32(j)
+        @cuda threads=1 blocks=1 pluq_compute_invdiag_kernel!(invdiag_slot, Adata, j32, N32)
+        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_right_kernel!(Adata, j32, istart32, n32, kend32, N32, invdiag_slot)
     end
     return
 end
