@@ -1,49 +1,56 @@
 """
-    pluq_trsm_left_kernel!(A, i, jstart, n, k0, N)
+    pluq_trsm_left_panel_kernel!(A, k0, kend, n, N)
 
-Kernel for one row `i` of left lower-unit triangular solve on trailing columns.
+Kernel for left lower-unit triangular solve on trailing columns:
+`L11 * U12 = A12`, writing `U12` in place.
+
+Each thread processes one trailing column and solves all panel rows in order.
 """
-function pluq_trsm_left_kernel!(A, i::Int32, jstart::Int32, n::Int32, k0::Int32, N::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + jstart - 1
+function pluq_trsm_left_panel_kernel!(A, k0::Int32, kend::Int32, n::Int32, N::Int32)
+    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + kend
     stride = blockDim().x * gridDim().x
     while j <= n
-        acc = _pluq_mod_t(A[i, j], N)
-        t = k0
-        while t < i
-            acc = _pluq_mod_t(acc - _pluq_mod_mul_t(A[i, t], A[t, j], N), N)
-            t += 1
+        i = k0
+        while i <= kend
+            acc = _pluq_mod_t(A[i, j], N)
+            t = k0
+            while t < i
+                acc = _pluq_mod_t(acc - _pluq_mod_mul_t(A[i, t], A[t, j], N), N)
+                t += 1
+            end
+            A[i, j] = acc
+            i += 1
         end
-        A[i, j] = acc
         j += stride
     end
     return
 end
 
 """
-    pluq_trsm_right_kernel!(A, j, istart, n, kend, N, invdiag)
+    pluq_trsm_right_panel_kernel!(A, k0, kend, n, N)
 
-Kernel for one column `j` of right upper-triangular solve on trailing rows.
+Kernel for right upper-triangular solve on trailing rows:
+`L21 * U11 = A21`, writing `L21` in place.
+
+Each thread processes one trailing row and solves panel columns backward.
 """
-function pluq_trsm_right_kernel!(A, j::Int32, istart::Int32, n::Int32, kend::Int32, N::Int32, invdiag_slot)
-    invdiag = invdiag_slot[1]
-    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + istart - 1
+function pluq_trsm_right_panel_kernel!(A, k0::Int32, kend::Int32, n::Int32, N::Int32)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + kend
     stride = blockDim().x * gridDim().x
     while i <= n
-        acc = _pluq_mod_t(A[i, j], N)
-        t = j + 1
-        while t <= kend
-            acc = _pluq_mod_t(acc - _pluq_mod_mul_t(A[i, t], A[t, j], N), N)
-            t += 1
+        j = kend
+        while j >= k0
+            acc = _pluq_mod_t(A[i, j], N)
+            t = j + 1
+            while t <= kend
+                acc = _pluq_mod_t(acc - _pluq_mod_mul_t(A[i, t], A[t, j], N), N)
+                t += 1
+            end
+            invdiag = _pluq_mod_inv_t(A[j, j], N)
+            A[i, j] = _pluq_mod_mul_t(acc, invdiag, N)
+            j -= 1
         end
-        A[i, j] = _pluq_mod_mul_t(acc, invdiag, N)
         i += stride
-    end
-    return
-end
-
-function pluq_compute_invdiag_kernel!(invdiag_slot, A, j::Int32, N::Int32)
-    if blockIdx().x == 1 && threadIdx().x == 1
-        invdiag_slot[1] = _pluq_mod_inv_t(A[j, j], N)
     end
     return
 end
@@ -69,11 +76,9 @@ function pluq_trsm_left_lower_unit_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, ke
     threads = 256
     N32 = Int32(N)
     n32 = Int32(n)
-    jstart32 = Int32(kend + 1)
     k032 = Int32(k0)
-    for i in k0:kend
-        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_left_kernel!(Adata, Int32(i), jstart32, n32, k032, N32)
-    end
+    kend32 = Int32(kend)
+    @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_left_panel_kernel!(Adata, k032, kend32, n32, N32)
     return
 end
 
@@ -98,13 +103,8 @@ function pluq_trsm_right_upper_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::
     threads = 256
     N32 = Int32(N)
     n32 = Int32(n)
+    k032 = Int32(k0)
     kend32 = Int32(kend)
-    istart32 = Int32(kend + 1)
-    invdiag_slot = CUDA.zeros(T, 1)
-    for j in kend:-1:k0
-        j32 = Int32(j)
-        @cuda threads=1 blocks=1 pluq_compute_invdiag_kernel!(invdiag_slot, Adata, j32, N32)
-        @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_right_kernel!(Adata, j32, istart32, n32, kend32, N32, invdiag_slot)
-    end
+    @cuda threads=threads blocks=max(1, cld(n - kend, threads)) pluq_trsm_right_panel_kernel!(Adata, k032, kend32, n32, N32)
     return
 end
