@@ -76,6 +76,16 @@ function _time_gpu(f)
     return t
 end
 
+function _time_gpu_batched(f, batch)
+    t = @elapsed begin
+        for A in batch
+            f(A)
+        end
+        CUDA.synchronize()
+    end
+    return t / length(batch)
+end
+
 function write_phase0_csv(rows, path::String="test/Experiments/Phase0_benchmark.csv")
     mkpath(dirname(path))
     header = ["regime", "shape", "elem_type", "p", "rows", "cols", "pluq_mean", "pluq_median", "inv_mean", "inv_median"]
@@ -151,7 +161,8 @@ function run_phase0_regime_benchmark(;
     seed::Int=7,
     verbose::Bool=true,
     export_csv::Bool=true,
-    csv_path::String="test/Experiments/Phase0_benchmark.csv"
+    csv_path::String="test/Experiments/Phase0_benchmark.csv",
+    batch_count::Int=4
 )
     rng = Random.MersenneTwister(seed)
     if warmup
@@ -165,23 +176,28 @@ function run_phase0_regime_benchmark(;
             continue
         end
         for (shape, T, p) in PHASE0_BENCH_CASES
-            A = if shape == :square
-                CuModMatrix(_phase0_bench_square_host(reg.square_n, p, T, rng), p; elem_type=T)
-            else
-                CuModMatrix(_phase0_bench_rect_host(reg.rect_m, reg.rect_n, p, T, rng), p; elem_type=T)
+            local_batch = (reg.long_only || max(reg.square_n, reg.rect_n) >= 1024) ? 1 : max(1, batch_count)
+            batch = CuModMatrix[]
+            for _ in 1:local_batch
+                A = if shape == :square
+                    CuModMatrix(_phase0_bench_square_host(reg.square_n, p, T, rng), p; elem_type=T)
+                else
+                    CuModMatrix(_phase0_bench_rect_host(reg.rect_m, reg.rect_n, p, T, rng), p; elem_type=T)
+                end
+                push!(batch, A)
             end
             t_pluq = Float64[]
             t_inv = Float64[]
             for _ in 1:trials
                 try
-                    push!(t_pluq, _time_gpu(() -> pluq_new(A)))
+                    push!(t_pluq, _time_gpu_batched(pluq_new, batch))
                 catch
                     push!(t_pluq, NaN)
                 end
                 if shape == :square
                     if reg.run_inverse
                         try
-                            push!(t_inv, _time_gpu(() -> inverse_new(A)))
+                            push!(t_inv, _time_gpu_batched(inverse_new, batch))
                         catch
                             push!(t_inv, NaN)
                         end
@@ -191,7 +207,7 @@ function run_phase0_regime_benchmark(;
                 else
                     if reg.run_inverse
                         try
-                            push!(t_inv, _time_gpu(() -> right_inverse_new(A)))
+                            push!(t_inv, _time_gpu_batched(right_inverse_new, batch))
                         catch
                             push!(t_inv, NaN)
                         end
@@ -235,6 +251,7 @@ function run_phase1_benchmark(;
     verbose::Bool=true,
     export_csv::Bool=true,
     csv_path::String="test/Experiments/Phase1_benchmark.csv",
+    batch_count::Int=4,
     baseline_csv_path::String="test/Experiments/Phase0_benchmark.csv",
     export_speedup_csv::Bool=true,
     speedup_csv_path::String="test/Experiments/Phase1_speedup_vs_Phase0.csv"
@@ -246,6 +263,7 @@ function run_phase1_benchmark(;
         verbose=verbose,
         export_csv=export_csv,
         csv_path=csv_path,
+        batch_count=batch_count,
     )
     if export_speedup_csv && isfile(baseline_csv_path)
         outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
@@ -263,6 +281,7 @@ function run_phase2_benchmark(;
     verbose::Bool=true,
     export_csv::Bool=true,
     csv_path::String="test/Experiments/Phase2_benchmark.csv",
+    batch_count::Int=4,
     baseline_csv_path::String="test/Experiments/Phase1_benchmark.csv",
     export_speedup_csv::Bool=true,
     speedup_csv_path::String="test/Experiments/Phase2_speedup_vs_Phase1.csv"
@@ -274,6 +293,7 @@ function run_phase2_benchmark(;
         verbose=verbose,
         export_csv=export_csv,
         csv_path=csv_path,
+        batch_count=batch_count,
     )
     if export_speedup_csv && isfile(baseline_csv_path)
         outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
@@ -291,6 +311,7 @@ function run_phase3_benchmark(;
     verbose::Bool=true,
     export_csv::Bool=true,
     csv_path::String="test/Experiments/Phase3_benchmark.csv",
+    batch_count::Int=4,
     baseline_csv_path::String="test/Experiments/Phase2_benchmark.csv",
     export_speedup_csv::Bool=true,
     speedup_csv_path::String="test/Experiments/Phase3_speedup_vs_Phase2.csv"
@@ -302,6 +323,37 @@ function run_phase3_benchmark(;
         verbose=verbose,
         export_csv=export_csv,
         csv_path=csv_path,
+        batch_count=batch_count,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
+end
+
+function run_phase4_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/Phase4_benchmark.csv",
+    batch_count::Int=4,
+    baseline_csv_path::String="test/Experiments/Phase3_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/Phase4_speedup_vs_Phase3.csv"
+)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        export_csv=export_csv,
+        csv_path=csv_path,
+        batch_count=batch_count,
     )
     if export_speedup_csv && isfile(baseline_csv_path)
         outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
