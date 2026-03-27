@@ -397,6 +397,38 @@ function run_phase5_benchmark(;
     return rows
 end
 
+function run_phaseB2_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/PhaseB2_benchmark.csv",
+    batch_count::Int=8,
+    baseline_csv_path::String="test/Experiments/Phase5_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/PhaseB2_speedup_vs_Phase5.csv",
+    options::PLUQOptions=PLUQOptions(lazy_q=true, nftb=8)
+)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        export_csv=export_csv,
+        csv_path=csv_path,
+        batch_count=batch_count,
+        options=options,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
     run_phase0_regime_benchmark()
 end

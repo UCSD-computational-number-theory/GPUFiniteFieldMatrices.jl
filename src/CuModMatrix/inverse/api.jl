@@ -98,14 +98,38 @@ function pluq_aug_find_pivot_kernel!(aug, pivot_slot, k::Int32, n::Int32, N::Int
     return
 end
 
+function pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k::Int32, n::Int32, N::Int32)
+    lane = Int(threadIdx().x)
+    if lane > 32
+        return
+    end
+    span = n - k + 1
+    row = k + Int32(lane - 1)
+    pred = Int32(lane) <= span && _pluq_mod_t(aug[row, k], N) != zero(eltype(aug))
+    bits = CUDA.vote_ballot_sync(CUDA.FULL_MASK, pred)
+    if lane == 1
+        if bits == UInt32(0)
+            pivot_slot[1] = Int32(n + 1)
+        else
+            pivot_slot[1] = k + Int32(trailing_zeros(bits))
+        end
+    end
+    return
+end
+
 """
     pluq_aug_scale_row_kernel!(aug, row, jstart, n2, invpivot, N)
 
 Scale one augmented row by the modular inverse of the pivot.
 Internal kernel used by `inverse_new`.
 """
-function pluq_aug_scale_row_kernel!(aug, row::Int32, jstart::Int32, n2::Int32, invpivot_slot, N::Int32)
-    invpivot = invpivot_slot[1]
+function pluq_aug_scale_row_from_diag_kernel!(aug, row::Int32, jstart::Int32, n2::Int32, N::Int32)
+    invslot = CuStaticSharedArray(eltype(aug), 1)
+    if threadIdx().x == 1
+        invslot[1] = _pluq_mod_inv_t(aug[row, row], N)
+    end
+    sync_threads()
+    invpivot = invslot[1]
     j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + jstart - 1
     stride = blockDim().x * gridDim().x
     while j <= n2
@@ -172,11 +196,14 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     @cuda threads=(tx, ty) blocks=(bx, by) pluq_init_aug_kernel!(aug, A.data, n32)
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(n + 1), 1)
-    invpivot_slot = CUDA.zeros(eltype(aug), 1)
     for k in 1:n
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(n + 1))
-        @cuda threads=threads blocks=max(1, cld(n - k + 1, threads)) pluq_aug_find_pivot_kernel!(aug, pivot_slot, k32, n32, N32)
+        if n - k + 1 <= 32
+            @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k32, n32, N32)
+        else
+            @cuda threads=threads blocks=max(1, cld(n - k + 1, threads)) pluq_aug_find_pivot_kernel!(aug, pivot_slot, k32, n32, N32)
+        end
         prow = Int(Array(@view pivot_slot[1:1])[1])
         if prow > n
             throw(InverseNotDefinedException("matrix is singular modulo $(A.N)"))
@@ -184,8 +211,7 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         if prow != k
             @cuda threads=threads blocks=max(1, cld(n2, threads)) pluq_swap_rows_kernel!(aug, k32, _to_i32(prow), n232)
         end
-        @cuda threads=1 blocks=1 pluq_compute_invpivot_kernel!(invpivot_slot, aug, k32, N32)
-        @cuda threads=threads blocks=max(1, cld(n2 - k + 1, threads)) pluq_aug_scale_row_kernel!(aug, k32, k32, n232, invpivot_slot, N32)
+        @cuda threads=threads blocks=max(1, cld(n2 - k + 1, threads)) pluq_aug_scale_row_from_diag_kernel!(aug, k32, k32, n232, N32)
         bx2 = max(1, cld(n2 - k + 1, tx))
         by2 = max(1, cld(n, ty))
         @cuda threads=(tx, ty) blocks=(bx2, by2) pluq_aug_elim_kernel!(aug, k32, n32, n232, N32)
@@ -211,8 +237,13 @@ function pluq_init_rect_aug_kernel!(aug, Adata, m::Int32, n::Int32)
     return
 end
 
-function pluq_scale_row_rect_aug_kernel!(aug, row::Int32, jstart::Int32, w::Int32, invpivot_slot, N::Int32)
-    invpivot = invpivot_slot[1]
+function pluq_scale_row_rect_aug_from_diag_kernel!(aug, row::Int32, jstart::Int32, w::Int32, N::Int32)
+    invslot = CuStaticSharedArray(eltype(aug), 1)
+    if threadIdx().x == 1
+        invslot[1] = _pluq_mod_inv_t(aug[row, row], N)
+    end
+    sync_threads()
+    invpivot = invslot[1]
     j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + jstart - 1
     stride = blockDim().x * gridDim().x
     while j <= w
@@ -292,7 +323,6 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     q = collect(1:n)
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(m * n + 1), 1)
-    invpivot_slot = CUDA.zeros(eltype(aug), 1)
     rank = 0
     for k in 1:m
         span_r = m - k + 1
@@ -303,7 +333,11 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         total = span_r * span_c
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(total + 1))
-        @cuda threads=threads blocks=max(1, cld(total, threads)) pluq_find_pivot_rect_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+        if span_r <= 32
+            @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+        else
+            @cuda threads=threads blocks=max(1, cld(total, threads)) pluq_find_pivot_rect_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+        end
         pivlin = Int(Array(@view pivot_slot[1:1])[1])
         if pivlin > total
             break
@@ -319,8 +353,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
             @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(aug, k32, _to_i32(pcol), m32)
             q[k], q[pcol] = q[pcol], q[k]
         end
-        @cuda threads=1 blocks=1 pluq_compute_invpivot_kernel!(invpivot_slot, aug, k32, N32)
-        @cuda threads=threads blocks=max(1, cld(w - k + 1, threads)) pluq_scale_row_rect_aug_kernel!(aug, k32, k32, w32, invpivot_slot, N32)
+        @cuda threads=threads blocks=max(1, cld(w - k + 1, threads)) pluq_scale_row_rect_aug_from_diag_kernel!(aug, k32, k32, w32, N32)
         @cuda threads=(tx, ty) blocks=(max(1, cld(w - k + 1, tx)), max(1, cld(m, ty))) pluq_elim_rect_aug_kernel!(aug, k32, m32, w32, N32)
         rank += 1
     end

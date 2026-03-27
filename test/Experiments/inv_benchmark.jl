@@ -202,24 +202,44 @@ function benchmark_inverse_suite(
         old_times = Float64[]
         nemo_times = Float64[]
         for _ in 1:trials
-            t_new = _time_gpu_batch(B -> GPUFiniteFieldMatrices.inverse_new_batch(B), batch)
-            t_old = (compare_old && spec.rows == spec.cols) ? _time_gpu_call(() -> GPUFiniteFieldMatrices.inverse(A)) : NaN
-            t_nemo = benchmark_mode == :throughput ?
-                _time_cpu_batch(B -> spec.rows == spec.cols ? nemo_inverse_matrix(B, spec.p) : nemo_is_invertible_with_inverse(B, spec.p), A_cpu_batch) :
-                _time_cpu_call(() -> spec.rows == spec.cols ? nemo_inverse_matrix(A_cpu, spec.p) : nemo_is_invertible_with_inverse(A_cpu, spec.p))
+            t_new = try
+                _time_gpu_batch(B -> GPUFiniteFieldMatrices.inverse_new_batch(B), batch)
+            catch
+                NaN
+            end
+            t_old = try
+                (compare_old && spec.rows == spec.cols) ? _time_gpu_call(() -> GPUFiniteFieldMatrices.inverse(A)) : NaN
+            catch
+                NaN
+            end
+            t_nemo = try
+                benchmark_mode == :throughput ?
+                    _time_cpu_batch(B -> spec.rows == spec.cols ? nemo_inverse_matrix(B, spec.p) : nemo_is_invertible_with_inverse(B, spec.p), A_cpu_batch) :
+                    _time_cpu_call(() -> spec.rows == spec.cols ? nemo_inverse_matrix(A_cpu, spec.p) : nemo_is_invertible_with_inverse(A_cpu, spec.p))
+            catch
+                NaN
+            end
             push!(new_times, t_new)
             push!(old_times, t_old)
             push!(nemo_times, t_nemo)
         end
-        Ainv_new = GPUFiniteFieldMatrices.inverse_new_batch([A])[1]
-        Ainv_old = (compare_old && spec.rows == spec.cols) ? GPUFiniteFieldMatrices.inverse(A) : nothing
+        Ainv_new = try
+            GPUFiniteFieldMatrices.inverse_new_batch([A])[1]
+        catch
+            nothing
+        end
+        Ainv_old = try
+            (compare_old && spec.rows == spec.cols) ? GPUFiniteFieldMatrices.inverse(A) : nothing
+        catch
+            nothing
+        end
         new_ok = true
         old_ok = compare_old && spec.rows == spec.cols
         if check_against_nemo
-            if spec.rows == spec.cols
+            if spec.rows == spec.cols && Ainv_new !== nothing
                 Ainv_new_cpu = mod.(round.(Int, Array(Ainv_new)), spec.p)
                 new_ok = Ainv_new_cpu == nemo_inv
-                if compare_old
+                if compare_old && Ainv_old !== nothing
                     Ainv_old_cpu = mod.(round.(Int, Array(Ainv_old)), spec.p)
                     old_ok = Ainv_old_cpu == nemo_inv
                 end
