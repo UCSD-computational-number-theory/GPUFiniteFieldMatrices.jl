@@ -156,8 +156,13 @@ end
 
 Scale `A[k+1:kend, k]` by `invpivot` modulo `N`.
 """
-function pluq_scale_column_kernel!(A, k::Int32, kend::Int32, invpivot_slot, N::Int32)
-    invpivot = invpivot_slot[1]
+function pluq_scale_column_from_diag_kernel!(A, k::Int32, kend::Int32, N::Int32)
+    invslot = CuStaticSharedArray(eltype(A), 1)
+    if threadIdx().x == 1
+        invslot[1] = _pluq_mod_inv_t(A[k, k], N)
+    end
+    sync_threads()
+    invpivot = invslot[1]
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
     stride = blockDim().x * gridDim().x
     while i <= kend
@@ -204,7 +209,6 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
     threads = min(256, max(32, 32 * options.nftb))
     maxspan = kend - k0 + 1
     pivot_slot = CUDA.fill(Int32(maxspan * maxspan + 1), 1)
-    invpivot_slot = CUDA.zeros(T, 1)
     locp = options.lazy_q ? collect(1:maxspan) : Int[]
     locq = options.lazy_q ? collect(1:maxspan) : Int[]
     for k in k0:kend
@@ -249,9 +253,8 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
             end
         end
         # Normalize pivot row/column step in packed LU form.
-        @cuda threads=1 blocks=1 pluq_compute_invpivot_kernel!(invpivot_slot, Adata, Int32(k), N32)
         if k < kend
-            @cuda threads=threads blocks=max(1, cld(kend - k, threads)) pluq_scale_column_kernel!(Adata, Int32(k), Int32(kend), invpivot_slot, N32)
+            @cuda threads=threads blocks=max(1, cld(kend - k, threads)) pluq_scale_column_from_diag_kernel!(Adata, Int32(k), Int32(kend), N32)
             tx = 16
             ty = 16
             bx = max(1, cld(kend - k, tx))

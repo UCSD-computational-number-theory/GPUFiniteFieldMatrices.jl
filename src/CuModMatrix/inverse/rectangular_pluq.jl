@@ -41,6 +41,30 @@ function pluq_find_pivot_rect_kernel!(A, pivot_slot, k::Int32, m::Int32, n::Int3
     return
 end
 
+function pluq_find_pivot_rect_warp_kernel!(A, pivot_slot, k::Int32, m::Int32, n::Int32, N::Int32)
+    lane = Int(threadIdx().x)
+    if lane > 32
+        return
+    end
+    span_r = m - k + 1
+    span_c = n - k + 1
+    joff = Int32(0)
+    while joff < span_c
+        row = k + Int32(lane - 1)
+        pred = Int32(lane) <= span_r && _pluq_mod_t(A[row, k + joff], N) != zero(eltype(A))
+        bits = CUDA.vote_ballot_sync(CUDA.FULL_MASK, pred)
+        if bits != UInt32(0)
+            if lane == 1
+                first_lane = Int32(trailing_zeros(bits) + 1)
+                pivot_slot[1] = joff * span_r + first_lane
+            end
+            return
+        end
+        joff += 1
+    end
+    return
+end
+
 """
     pluq_scale_column_rect_kernel!(A, k, m, invpivot, N)
 
@@ -48,6 +72,22 @@ Scale entries below the pivot in column `k`:
 `A[k+1:m, k] *= invpivot (mod N)`.
 """
 function pluq_scale_column_rect_kernel!(A, k::Int32, m::Int32, invpivot, N::Int32)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
+    stride = blockDim().x * gridDim().x
+    while i <= m
+        A[i, k] = _pluq_mod_mul_t(A[i, k], invpivot, N)
+        i += stride
+    end
+    return
+end
+
+function pluq_scale_column_rect_from_diag_kernel!(A, k::Int32, m::Int32, N::Int32)
+    invslot = CuStaticSharedArray(eltype(A), 1)
+    if threadIdx().x == 1
+        invslot[1] = _pluq_mod_inv_t(A[k, k], N)
+    end
+    sync_threads()
+    invpivot = invslot[1]
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
     stride = blockDim().x * gridDim().x
     while i <= m
@@ -98,7 +138,11 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int)
         CUDA.fill!(pivot_slot, Int32(total + 1))
         blocks = max(1, cld(total, threads))
         k32 = Int32(k)
-        @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+        if span_r <= 32
+            @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+        else
+            @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+        end
         pivlin = Int(Array(@view pivot_slot[1:1])[1])
         if pivlin > total
             break
@@ -115,10 +159,8 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int)
             @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(Adata, k32, Int32(pcol), m32)
             q[k], q[pcol] = q[pcol], q[k]
         end
-        piv = Int(Array(@view Adata[k:k, k:k])[1])
-        invpiv = convert(T, pluq_mod_inv(piv, N))
         if k < m
-            @cuda threads=threads blocks=max(1, cld(m - k, threads)) pluq_scale_column_rect_kernel!(Adata, k32, m32, invpiv, N32)
+            @cuda threads=threads blocks=max(1, cld(m - k, threads)) pluq_scale_column_rect_from_diag_kernel!(Adata, k32, m32, N32)
         end
         if k < n
             tx = 16
