@@ -22,9 +22,9 @@ function pluq_blocked_recursive_gpu!(Adata::CuArray{T,2}, N::Int, opts::PLUQOpti
     b = min(opts.blocksize, seglen)
     kend = min(start + b - 1, stop)
     rank = pluq_basecase_gpu!(Adata, N, p, q, start, kend, n; options=opts)
-    pluq_trsm_left_lower_unit_gpu!(Adata, N, start, kend, stop)
-    pluq_trsm_right_upper_gpu!(Adata, N, start, kend, stop)
-    pluq_schur_update_gpu!(Adata, N, start, kend, stop)
+    pluq_trsm_left_lower_unit_gpu!(Adata, N, start, kend, stop, options=opts)
+    pluq_trsm_right_upper_gpu!(Adata, N, start, kend, stop, options=opts)
+    pluq_schur_update_gpu!(Adata, N, start, kend, stop, options=opts)
     rank += pluq_blocked_recursive_gpu!(Adata, N, opts, p, q, kend + 1, stop, n)
     return rank
 end
