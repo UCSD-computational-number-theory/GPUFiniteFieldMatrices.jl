@@ -65,6 +65,32 @@ function pluq_find_pivot_rect_warp_kernel!(A, pivot_slot, k::Int32, m::Int32, n:
     return
 end
 
+function pluq_find_pivot_rect_warp_shfl_kernel!(A, pivot_slot, k::Int32, m::Int32, n::Int32, N::Int32)
+    lane = Int32(threadIdx().x)
+    if lane > Int32(32)
+        return
+    end
+    span_r = m - k + Int32(1)
+    span_c = n - k + Int32(1)
+    local_min = span_r * span_c + Int32(1)
+    if lane <= span_r
+        row = k + lane - Int32(1)
+        joff = Int32(0)
+        while joff < span_c
+            if _pluq_mod_t(A[row, k + joff], N) != zero(eltype(A))
+                cand = joff * span_r + lane
+                local_min = min(local_min, cand)
+            end
+            joff += Int32(1)
+        end
+    end
+    wmin = _pluq_warp_min_shfl_i32(local_min)
+    if lane == Int32(1)
+        pivot_slot[1] = wmin
+    end
+    return
+end
+
 """
     pluq_scale_column_rect_kernel!(A, k, m, invpivot, N)
 
@@ -121,7 +147,7 @@ Returns `(p, q, rank)` where:
 - `q` is column permutation vector (length `n`)
 - `rank` is computed rank over `GF(N)`.
 """
-function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int) where {T}
+function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int; options::PLUQOptions=PLUQOptions()) where {T}
     rmax = min(m, n)
     p = collect(1:m)
     q = collect(1:n)
@@ -139,7 +165,11 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int)
         blocks = max(1, cld(total, threads))
         k32 = Int32(k)
         if span_r <= 32
-            @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+            if options.pivot_warp_kernel == :shfl
+                @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_shfl_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+            else
+                @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
+            end
         else
             @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
         end

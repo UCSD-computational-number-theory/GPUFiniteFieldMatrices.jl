@@ -12,7 +12,7 @@ function pluq_new!(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     p, q, rank = if m == n
         pluq_blocked_gpu!(A.data, A.N, options, n)
     else
-        pluq_rectangular_rank_gpu!(A.data, A.N, m, n)
+        pluq_rectangular_rank_gpu!(A.data, A.N, m, n, options=options)
     end
     return PLUQFactorization(A, p, q, rank)
 end
@@ -117,6 +117,26 @@ function pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k::Int32, n::Int32, N
     return
 end
 
+function pluq_aug_find_pivot_warp_shfl_kernel!(aug, pivot_slot, k::Int32, n::Int32, N::Int32)
+    lane = Int32(threadIdx().x)
+    if lane > Int32(32)
+        return
+    end
+    span = n - k + Int32(1)
+    local_min = n + Int32(1)
+    if lane <= span
+        row = k + lane - Int32(1)
+        if _pluq_mod_t(aug[row, k], N) != zero(eltype(aug))
+            local_min = row
+        end
+    end
+    wmin = _pluq_warp_min_shfl_i32(local_min)
+    if lane == Int32(1)
+        pivot_slot[1] = wmin
+    end
+    return
+end
+
 """
     pluq_aug_scale_row_kernel!(aug, row, jstart, n2, invpivot, N)
 
@@ -200,7 +220,11 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(n + 1))
         if n - k + 1 <= 32
-            @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k32, n32, N32)
+            if options.pivot_warp_kernel == :shfl
+                @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_shfl_kernel!(aug, pivot_slot, k32, n32, N32)
+            else
+                @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k32, n32, N32)
+            end
         else
             @cuda threads=threads blocks=max(1, cld(n - k + 1, threads)) pluq_aug_find_pivot_kernel!(aug, pivot_slot, k32, n32, N32)
         end
@@ -334,7 +358,11 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(total + 1))
         if span_r <= 32
-            @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+            if options.pivot_warp_kernel == :shfl
+                @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_shfl_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+            else
+                @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(aug, pivot_slot, k32, m32, n32, N32)
+            end
         else
             @cuda threads=threads blocks=max(1, cld(total, threads)) pluq_find_pivot_rect_kernel!(aug, pivot_slot, k32, m32, n32, N32)
         end

@@ -160,6 +160,7 @@ function run_phase0_regime_benchmark(;
     warmup::Bool=true,
     seed::Int=7,
     verbose::Bool=true,
+    debug_errors::Bool=false,
     export_csv::Bool=true,
     csv_path::String="test/Experiments/Phase0_benchmark.csv",
     batch_count::Int=4,
@@ -172,6 +173,9 @@ function run_phase0_regime_benchmark(;
         CUDA.@sync inverse_new(A0)
     end
     rows = NamedTuple[]
+    if verbose
+        println("kernel config: pivot_warp_kernel=$(options.pivot_warp_kernel), trsm_mode=$(options.trsm_mode), trsm_warp_threshold=$(options.trsm_warp_threshold), schur_tile=$(options.schur_tile), schur_transpose_u=$(options.schur_transpose_u)")
+    end
     for reg in PHASE0_BENCH_REGIMES
         if reg.long_only && !_phase0_bench_long_enabled()
             continue
@@ -192,14 +196,20 @@ function run_phase0_regime_benchmark(;
             for _ in 1:trials
                 try
                     push!(t_pluq, _time_gpu_batched(A -> pluq_new(A, options=options), batch))
-                catch
+                catch err
+                    if debug_errors
+                        println("pluq error regime=$(reg.name) shape=$(shape) T=$(T) p=$(p): ", sprint(showerror, err))
+                    end
                     push!(t_pluq, NaN)
                 end
                 if shape == :square
                     if reg.run_inverse
                         try
                             push!(t_inv, _time_gpu_batched(A -> inverse_new(A, options=options), batch))
-                        catch
+                        catch err
+                            if debug_errors
+                                println("inverse error regime=$(reg.name) shape=$(shape) T=$(T) p=$(p): ", sprint(showerror, err))
+                            end
                             push!(t_inv, NaN)
                         end
                     else
@@ -209,7 +219,10 @@ function run_phase0_regime_benchmark(;
                     if reg.run_inverse
                         try
                             push!(t_inv, _time_gpu_batched(A -> right_inverse_new(A, options=options), batch))
-                        catch
+                        catch err
+                            if debug_errors
+                                println("right_inverse error regime=$(reg.name) shape=$(shape) T=$(T) p=$(p): ", sprint(showerror, err))
+                            end
                             push!(t_inv, NaN)
                         end
                     else
@@ -427,6 +440,137 @@ function run_phaseB2_benchmark(;
         end
     end
     return rows
+end
+
+function run_phaseC_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    debug_errors::Bool=false,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/PhaseC_benchmark.csv",
+    batch_count::Int=8,
+    baseline_csv_path::String="test/Experiments/PhaseB2_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/PhaseC_speedup_vs_PhaseB2.csv",
+    options::PLUQOptions=PLUQOptions(
+        lazy_q=true,
+        nftb=8,
+        trsm_mode=:auto,
+        trsm_warp_threshold=24,
+        schur_tile=16,
+        schur_transpose_u=true,
+        pivot_warp_kernel=:ballot,
+    )
+)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        debug_errors=debug_errors,
+        export_csv=export_csv,
+        csv_path=csv_path,
+        batch_count=batch_count,
+        options=options,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
+end
+
+function write_phaseC_warp_compare_csv(
+    rows_ballot,
+    rows_shfl,
+    path::String="test/Experiments/PhaseC_warp_compare.csv",
+)
+    mkpath(dirname(path))
+    bmap = Dict{Tuple{String,String,String,Int,Int,Int}, Tuple{Float64,Float64}}()
+    for r in rows_ballot
+        key = (String(r.regime), String(r.shape), string(r.elem_type), r.p, r.rows, r.cols)
+        bmap[key] = (r.pluq_mean, r.inv_mean)
+    end
+    open(path, "w") do io
+        println(io, join((
+            "regime", "shape", "elem_type", "p", "rows", "cols",
+            "ballot_pluq_mean", "shfl_pluq_mean", "pluq_speedup_shfl_vs_ballot",
+            "ballot_inv_mean", "shfl_inv_mean", "inv_speedup_shfl_vs_ballot",
+        ), ","))
+        for r in rows_shfl
+            key = (String(r.regime), String(r.shape), string(r.elem_type), r.p, r.rows, r.cols)
+            b = get(bmap, key, (NaN, NaN))
+            pluq_sp = (isfinite(b[1]) && isfinite(r.pluq_mean) && r.pluq_mean != 0.0) ? b[1] / r.pluq_mean : NaN
+            inv_sp = (isfinite(b[2]) && isfinite(r.inv_mean) && r.inv_mean != 0.0) ? b[2] / r.inv_mean : NaN
+            println(io, join((
+                String(r.regime),
+                String(r.shape),
+                string(r.elem_type),
+                string(r.p),
+                string(r.rows),
+                string(r.cols),
+                string(b[1]),
+                string(r.pluq_mean),
+                string(pluq_sp),
+                string(b[2]),
+                string(r.inv_mean),
+                string(inv_sp),
+            ), ","))
+        end
+    end
+    return path
+end
+
+function run_phaseC_warp_compare_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    debug_errors::Bool=false,
+    batch_count::Int=8,
+    ballot_csv_path::String="test/Experiments/PhaseC_ballot_benchmark.csv",
+    shfl_csv_path::String="test/Experiments/PhaseC_shfl_benchmark.csv",
+    compare_csv_path::String="test/Experiments/PhaseC_warp_compare.csv",
+)
+    base_kwargs = (
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        debug_errors=debug_errors,
+        export_csv=true,
+        batch_count=batch_count,
+        export_speedup_csv=false,
+    )
+    ballot_opts = PLUQOptions(
+        lazy_q=true,
+        nftb=8,
+        trsm_mode=:auto,
+        trsm_warp_threshold=24,
+        schur_tile=16,
+        schur_transpose_u=true,
+        pivot_warp_kernel=:ballot,
+    )
+    shfl_opts = PLUQOptions(
+        lazy_q=true,
+        nftb=8,
+        trsm_mode=:auto,
+        trsm_warp_threshold=24,
+        schur_tile=16,
+        schur_transpose_u=true,
+        pivot_warp_kernel=:shfl,
+    )
+    rows_ballot = run_phaseC_benchmark(; base_kwargs..., csv_path=ballot_csv_path, options=ballot_opts)
+    rows_shfl = run_phaseC_benchmark(; base_kwargs..., csv_path=shfl_csv_path, options=shfl_opts)
+    outpath = write_phaseC_warp_compare_csv(rows_ballot, rows_shfl, compare_csv_path)
+    if verbose
+        println("saved shfl-vs-ballot csv to $(outpath)")
+    end
+    return (rows_ballot=rows_ballot, rows_shfl=rows_shfl, compare_csv=outpath)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
