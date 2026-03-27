@@ -117,6 +117,40 @@ function pluq_find_pivot_warp_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::I
     return
 end
 
+@inline function _pluq_warp_min_shfl_i32(v::Int32)
+    v = min(v, CUDA.shfl_down_sync(CUDA.FULL_MASK, v, Int32(16), Int32(32)))
+    v = min(v, CUDA.shfl_down_sync(CUDA.FULL_MASK, v, Int32(8), Int32(32)))
+    v = min(v, CUDA.shfl_down_sync(CUDA.FULL_MASK, v, Int32(4), Int32(32)))
+    v = min(v, CUDA.shfl_down_sync(CUDA.FULL_MASK, v, Int32(2), Int32(32)))
+    v = min(v, CUDA.shfl_down_sync(CUDA.FULL_MASK, v, Int32(1), Int32(32)))
+    return v
+end
+
+function pluq_find_pivot_warp_shfl_kernel!(A, pivot_slot, k::Int32, kend::Int32, N::Int32)
+    lane = Int32(threadIdx().x)
+    if lane > Int32(32)
+        return
+    end
+    span = kend - k + Int32(1)
+    local_min = span * span + Int32(1)
+    if lane <= span
+        row = k + lane - Int32(1)
+        joff = Int32(0)
+        while joff < span
+            if _pluq_mod_t(A[row, k + joff], N) != zero(eltype(A))
+                cand = joff * span + lane
+                local_min = min(local_min, cand)
+            end
+            joff += Int32(1)
+        end
+    end
+    wmin = _pluq_warp_min_shfl_i32(local_min)
+    if lane == Int32(1)
+        pivot_slot[1] = wmin
+    end
+    return
+end
+
 """
     pluq_swap_rows_kernel!(A, r1, r2, ncols)
 
@@ -218,7 +252,11 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
         total = span * span
         CUDA.fill!(pivot_slot, Int32(total + 1))
         if span <= 32
-            @cuda threads=32 blocks=1 pluq_find_pivot_warp_kernel!(Adata, pivot_slot, kk, kend32, N32)
+            if options.pivot_warp_kernel == :shfl
+                @cuda threads=32 blocks=1 pluq_find_pivot_warp_shfl_kernel!(Adata, pivot_slot, kk, kend32, N32)
+            else
+                @cuda threads=32 blocks=1 pluq_find_pivot_warp_kernel!(Adata, pivot_slot, kk, kend32, N32)
+            end
         else
             blocks = max(1, cld(total, threads))
             @cuda threads=threads blocks=blocks pluq_find_pivot_kernel!(Adata, pivot_slot, kk, kend32, N32)

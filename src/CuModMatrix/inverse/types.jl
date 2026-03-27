@@ -16,6 +16,11 @@ struct PLUQOptions
     pivot_policy::Symbol
     lazy_q::Bool
     nftb::Int
+    pivot_warp_kernel::Symbol
+    trsm_mode::Symbol
+    trsm_warp_threshold::Int
+    schur_tile::Int
+    schur_transpose_u::Bool
     check_prime::Bool
 end
 
@@ -30,12 +35,38 @@ function PLUQOptions(;
     pivot_policy::Symbol=:first_nonzero,
     lazy_q::Bool=true,
     nftb::Int=8,
+    pivot_warp_kernel::Symbol=:ballot,
+    trsm_mode::Symbol=:auto,
+    trsm_warp_threshold::Int=32,
+    schur_tile::Int=16,
+    schur_transpose_u::Bool=false,
     check_prime::Bool=false
 )
-    if blocksize < 1 || basecase < 1 || nftb < 1
-        throw(ArgumentError("blocksize, basecase, and nftb must be positive"))
+    if blocksize < 1 || basecase < 1 || nftb < 1 || trsm_warp_threshold < 1
+        throw(ArgumentError("blocksize, basecase, nftb, and trsm_warp_threshold must be positive"))
     end
-    return PLUQOptions(blocksize, basecase, pivot_policy, lazy_q, nftb, check_prime)
+    if !(pivot_warp_kernel in (:ballot, :shfl))
+        throw(ArgumentError("pivot_warp_kernel must be :ballot or :shfl"))
+    end
+    if !(trsm_mode in (:auto, :panel, :warp))
+        throw(ArgumentError("trsm_mode must be :auto, :panel, or :warp"))
+    end
+    if !(schur_tile in (8, 16, 32))
+        throw(ArgumentError("schur_tile must be one of 8, 16, or 32"))
+    end
+    return PLUQOptions(
+        blocksize,
+        basecase,
+        pivot_policy,
+        lazy_q,
+        nftb,
+        pivot_warp_kernel,
+        trsm_mode,
+        trsm_warp_threshold,
+        schur_tile,
+        schur_transpose_u,
+        check_prime,
+    )
 end
 
 """
