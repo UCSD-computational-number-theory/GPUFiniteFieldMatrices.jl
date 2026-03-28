@@ -43,7 +43,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          julia --project=. -e '
+          julia --project=test -e '
             using Pkg
             Pkg.test()
           '
