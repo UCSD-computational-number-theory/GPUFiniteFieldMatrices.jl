@@ -21,7 +21,7 @@ end
 
 Device-friendly modular multiplication returning the same element type.
 """
-@inline function _pluq_mod_mul_t(a::T, b::T, N::Int32) where {T}
+@inline function _pluq_mod_mul_baseline_t(a::T, b::T, N::Int32) where {T}
     av = Int64(a)
     bv = Int64(b)
     r = rem(av * bv, Int64(N))
@@ -29,6 +29,30 @@ Device-friendly modular multiplication returning the same element type.
         r += Int64(N)
     end
     return T(r)
+end
+
+@inline function _pluq_mod_mul_barrett_t(a::T, b::T, N::Int32) where {T}
+    av = UInt64(Int64(_pluq_mod_t(a, N)))
+    bv = UInt64(Int64(_pluq_mod_t(b, N)))
+    n = UInt64(UInt32(N))
+    x = av * bv
+    mu = (UInt64(1) << 32) ÷ n
+    q = (x * mu) >>> 32
+    r = x - q * n
+    if r >= n
+        r -= n
+    end
+    if r >= n
+        r -= n
+    end
+    return T(Int64(r))
+end
+
+@inline function _pluq_mod_mul_t(a::T, b::T, N::Int32) where {T}
+    if N <= Int32(65535)
+        return _pluq_mod_mul_barrett_t(a, b, N)
+    end
+    return _pluq_mod_mul_baseline_t(a, b, N)
 end
 
 @inline function _pluq_mod_inv_t(a::T, N::Int32) where {T}

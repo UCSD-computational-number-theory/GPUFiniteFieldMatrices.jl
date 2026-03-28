@@ -174,7 +174,7 @@ function run_phase0_regime_benchmark(;
     end
     rows = NamedTuple[]
     if verbose
-        println("kernel config: pivot_warp_kernel=$(options.pivot_warp_kernel), trsm_mode=$(options.trsm_mode), trsm_warp_threshold=$(options.trsm_warp_threshold), schur_tile=$(options.schur_tile), schur_transpose_u=$(options.schur_transpose_u)")
+        println("kernel config: pivot_warp_kernel=$(options.pivot_warp_kernel), trsm_mode=$(options.trsm_mode), trsm_warp_threshold=$(options.trsm_warp_threshold), schur_tile=$(options.schur_tile), schur_transpose_u=$(options.schur_transpose_u), mod_backend=$(options.mod_backend), inverse_strategy=$(options.inverse_strategy), autotune=$(options.autotune), batch_streams=$(options.batch_streams)")
     end
     for reg in PHASE0_BENCH_REGIMES
         if reg.long_only && !_phase0_bench_long_enabled()
@@ -571,6 +571,52 @@ function run_phaseC_warp_compare_benchmark(;
         println("saved shfl-vs-ballot csv to $(outpath)")
     end
     return (rows_ballot=rows_ballot, rows_shfl=rows_shfl, compare_csv=outpath)
+end
+
+function run_phaseDEF_benchmark(;
+    trials::Int=3,
+    warmup::Bool=true,
+    seed::Int=7,
+    verbose::Bool=true,
+    debug_errors::Bool=false,
+    export_csv::Bool=true,
+    csv_path::String="test/Experiments/PhaseDEF_benchmark.csv",
+    batch_count::Int=8,
+    baseline_csv_path::String="test/Experiments/PhaseC_benchmark.csv",
+    export_speedup_csv::Bool=true,
+    speedup_csv_path::String="test/Experiments/PhaseDEF_speedup_vs_PhaseC.csv",
+    options::PLUQOptions=PLUQOptions(
+        lazy_q=true,
+        nftb=8,
+        trsm_mode=:auto,
+        trsm_warp_threshold=24,
+        schur_tile=16,
+        schur_transpose_u=true,
+        pivot_warp_kernel=:ballot,
+        mod_backend=:auto,
+        inverse_strategy=:pluq,
+        autotune=true,
+        batch_streams=2,
+    ),
+)
+    rows = run_phase0_regime_benchmark(
+        trials=trials,
+        warmup=warmup,
+        seed=seed,
+        verbose=verbose,
+        debug_errors=debug_errors,
+        export_csv=export_csv,
+        csv_path=csv_path,
+        batch_count=batch_count,
+        options=options,
+    )
+    if export_speedup_csv && isfile(baseline_csv_path)
+        outpath = write_phase1_comparison_csv(rows, baseline_csv_path, speedup_csv_path)
+        if verbose
+            println("saved speedup csv to $(outpath)")
+        end
+    end
+    return rows
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

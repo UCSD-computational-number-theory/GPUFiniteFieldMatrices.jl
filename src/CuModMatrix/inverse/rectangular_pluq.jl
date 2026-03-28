@@ -151,6 +151,8 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int;
     rmax = min(m, n)
     p = collect(1:m)
     q = collect(1:n)
+    lp = options.lazy_q ? collect(1:m) : Int[]
+    lq = options.lazy_q ? collect(1:n) : Int[]
     rank = 0
     threads = 256
     N32 = Int32(N)
@@ -183,11 +185,19 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int;
         pcol = k + joff
         if prow != k
             @cuda threads=threads blocks=max(1, cld(n, threads)) pluq_swap_rows_kernel!(Adata, k32, Int32(prow), n32)
-            p[k], p[prow] = p[prow], p[k]
+            if options.lazy_q
+                lp[k], lp[prow] = lp[prow], lp[k]
+            else
+                p[k], p[prow] = p[prow], p[k]
+            end
         end
         if pcol != k
             @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(Adata, k32, Int32(pcol), m32)
-            q[k], q[pcol] = q[pcol], q[k]
+            if options.lazy_q
+                lq[k], lq[pcol] = lq[pcol], lq[k]
+            else
+                q[k], q[pcol] = q[pcol], q[k]
+            end
         end
         if k < m
             @cuda threads=threads blocks=max(1, cld(m - k, threads)) pluq_scale_column_rect_from_diag_kernel!(Adata, k32, m32, N32)
@@ -200,6 +210,10 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int;
             @cuda threads=(tx, ty) blocks=(bx, by) pluq_rank1_update_rect_kernel!(Adata, k32, m32, n32, N32)
         end
         rank += 1
+    end
+    if options.lazy_q
+        p = lp
+        q = lq
     end
     return p, q, rank
 end
