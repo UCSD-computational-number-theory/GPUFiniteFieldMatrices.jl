@@ -11,7 +11,7 @@ on:
 
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -21,6 +21,12 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
+        arch:
+          - x64
+
+    permissions:
+      actions: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +34,7 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: x64
+          arch: ${{ matrix.arch }}
 
       - uses: julia-actions/cache@v2
 
@@ -40,10 +46,4 @@ jobs:
             Pkg.instantiate()
           '
 
-      - name: Run tests
-        shell: bash
-        run: |
-          julia --project=test -e '
-            using Pkg
-            Pkg.test()
-          '
+      - uses: julia-actions/julia-runtest@v1
