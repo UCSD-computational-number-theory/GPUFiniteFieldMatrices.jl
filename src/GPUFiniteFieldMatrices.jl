@@ -63,7 +63,7 @@ export pluq_gpu_kernel
 export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
 export forward_sub_gpu_type_32, backward_sub_gpu_type_32
 export PLUQOptions, PLUQFactorization
-export pluq_new, pluq_new!, inverse_new, is_invertible_new
+export pluq_new, pluq_new!, inverse_new, inverse_pluq_new, is_invertible_new
 export pluq_new_batch, inverse_new_batch
 export pluq_batched_4x4!, pluq_batched_8x8!, pluq_batched_16x16!, pluq_batched_32x32!
 export inverse_batched_4x4!, inverse_batched_8x8!, inverse_batched_16x16!, inverse_batched_32x32!

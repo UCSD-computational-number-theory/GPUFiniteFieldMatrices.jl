@@ -1,5 +1,87 @@
 @inline _to_i32(x::Integer) = Int32(x)
 
+function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
+    if !options.autotune
+        return options
+    end
+    if n <= 32
+        return PLUQOptions(
+            blocksize=32,
+            basecase=32,
+            pivot_policy=options.pivot_policy,
+            lazy_q=options.lazy_q,
+            nftb=4,
+            pivot_warp_kernel=options.pivot_warp_kernel,
+            trsm_mode=:auto,
+            trsm_warp_threshold=16,
+            schur_tile=8,
+            schur_transpose_u=options.schur_transpose_u,
+            mod_backend=options.mod_backend,
+            inverse_strategy=options.inverse_strategy,
+            autotune=false,
+            batch_streams=max(1, options.batch_streams),
+            check_prime=options.check_prime,
+        )
+    elseif n <= 256
+        return PLUQOptions(
+            blocksize=64,
+            basecase=32,
+            pivot_policy=options.pivot_policy,
+            lazy_q=options.lazy_q,
+            nftb=T == Float32 ? 8 : 4,
+            pivot_warp_kernel=options.pivot_warp_kernel,
+            trsm_mode=:auto,
+            trsm_warp_threshold=24,
+            schur_tile=16,
+            schur_transpose_u=options.schur_transpose_u,
+            mod_backend=options.mod_backend,
+            inverse_strategy=options.inverse_strategy,
+            autotune=false,
+            batch_streams=max(1, options.batch_streams),
+            check_prime=options.check_prime,
+        )
+    elseif n <= 1536
+        return PLUQOptions(
+            blocksize=96,
+            basecase=32,
+            pivot_policy=options.pivot_policy,
+            lazy_q=options.lazy_q,
+            nftb=T == Float32 ? 8 : 6,
+            pivot_warp_kernel=options.pivot_warp_kernel,
+            trsm_mode=:auto,
+            trsm_warp_threshold=32,
+            schur_tile=16,
+            schur_transpose_u=options.schur_transpose_u,
+            mod_backend=options.mod_backend,
+            inverse_strategy=options.inverse_strategy,
+            autotune=false,
+            batch_streams=max(1, options.batch_streams),
+            check_prime=options.check_prime,
+        )
+    end
+    return PLUQOptions(
+        blocksize=128,
+        basecase=32,
+        pivot_policy=options.pivot_policy,
+        lazy_q=options.lazy_q,
+        nftb=T == Float32 ? 8 : 6,
+        pivot_warp_kernel=options.pivot_warp_kernel,
+        trsm_mode=:panel,
+        trsm_warp_threshold=32,
+        schur_tile=16,
+        schur_transpose_u=options.schur_transpose_u,
+        mod_backend=options.mod_backend,
+        inverse_strategy=options.inverse_strategy,
+        autotune=false,
+        batch_streams=max(1, options.batch_streams),
+        check_prime=options.check_prime,
+    )
+end
+
+function _resolve_options(options::PLUQOptions, A::CuModMatrix)
+    return _pluq_autotune_options(options, max(rows(A), cols(A)), eltype(A.data))
+end
+
 """
     pluq_new!(A; options=PLUQOptions())
 
@@ -7,12 +89,13 @@ Compute a blocked PLUQ factorization in place on GPU-resident data and return
 `PLUQFactorization` with packed LU and permutation vectors.
 """
 function pluq_new!(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
+    opts = _resolve_options(options, A)
     m = rows(A)
     n = cols(A)
     p, q, rank = if m == n
-        pluq_blocked_gpu!(A.data, A.N, options, n)
+        pluq_blocked_gpu!(A.data, A.N, opts, n)
     else
-        pluq_rectangular_rank_gpu!(A.data, A.N, m, n, options=options)
+        pluq_rectangular_rank_gpu!(A.data, A.N, m, n, options=opts)
     end
     return PLUQFactorization(A, p, q, rank)
 end
@@ -202,6 +285,10 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     if rows(A) != cols(A)
         throw(CuModMatrixNotSquareException("matrix must be square"))
     end
+    opts = _resolve_options(options, A)
+    if opts.inverse_strategy == :pluq
+        return inverse_pluq_new(A, options=opts)
+    end
     n = rows(A)
     N = A.N
     n2 = 2 * n
@@ -220,7 +307,7 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(n + 1))
         if n - k + 1 <= 32
-            if options.pivot_warp_kernel == :shfl
+            if opts.pivot_warp_kernel == :shfl
                 @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_shfl_kernel!(aug, pivot_slot, k32, n32, N32)
             else
                 @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_kernel!(aug, pivot_slot, k32, n32, N32)
@@ -246,6 +333,31 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     by3 = max(1, cld(n, ty))
     @cuda threads=(tx, ty) blocks=(bx3, by3) pluq_copy_block_kernel!(out, invdata, n32)
     return CuModMatrix(out, N; new_size=(n, n))
+end
+
+function inverse_pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
+    if rows(A) != cols(A)
+        throw(CuModMatrixNotSquareException("matrix must be square"))
+    end
+    opts = _resolve_options(options, A)
+    n = rows(A)
+    F = pluq_new(A, options=opts)
+    if F.rank != n
+        throw(InverseNotDefinedException("matrix is singular modulo $(A.N)"))
+    end
+    L = pluq_extract_L(F)
+    U = pluq_extract_U(F)
+    Linv = lower_triangular_inverse_no_copy(L)
+    Uinv = upper_triangular_inverse_no_copy(U)
+    M = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
+    mul!(M, Uinv, Linv)
+    pdev = CuArray(Int32.(F.q))
+    qdev = CuArray(Int32.(F.p))
+    out = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
+    tx = 16
+    ty = 16
+    @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_apply_paq_kernel!(out.data, M.data, pdev, qdev, Int32(n))
+    return out
 end
 
 function pluq_init_rect_aug_kernel!(aug, Adata, m::Int32, n::Int32)
@@ -329,6 +441,7 @@ Array(A * X)
 ```
 """
 function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
+    opts = _resolve_options(options, A)
     m = rows(A)
     n = cols(A)
     if m > n
@@ -345,6 +458,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     N32 = _to_i32(N)
     @cuda threads=(tx, ty) blocks=(max(1, cld(w, tx)), max(1, cld(m, ty))) pluq_init_rect_aug_kernel!(aug, A.data, m32, n32)
     q = collect(1:n)
+    lq = opts.lazy_q ? collect(1:n) : Int[]
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(m * n + 1), 1)
     rank = 0
@@ -358,7 +472,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(total + 1))
         if span_r <= 32
-            if options.pivot_warp_kernel == :shfl
+            if opts.pivot_warp_kernel == :shfl
                 @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_shfl_kernel!(aug, pivot_slot, k32, m32, n32, N32)
             else
                 @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_kernel!(aug, pivot_slot, k32, m32, n32, N32)
@@ -379,7 +493,11 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         end
         if pcol != k
             @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_swap_cols_kernel!(aug, k32, _to_i32(pcol), m32)
-            q[k], q[pcol] = q[pcol], q[k]
+            if opts.lazy_q
+                lq[k], lq[pcol] = lq[pcol], lq[k]
+            else
+                q[k], q[pcol] = q[pcol], q[k]
+            end
         end
         @cuda threads=threads blocks=max(1, cld(w - k + 1, threads)) pluq_scale_row_rect_aug_from_diag_kernel!(aug, k32, k32, w32, N32)
         @cuda threads=(tx, ty) blocks=(max(1, cld(w - k + 1, tx)), max(1, cld(m, ty))) pluq_elim_rect_aug_kernel!(aug, k32, m32, w32, N32)
@@ -392,6 +510,9 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     Z = CUDA.zeros(eltype(A.data), n + TILE_WIDTH, m + TILE_WIDTH)
     X = CUDA.zeros(eltype(A.data), n + TILE_WIDTH, m + TILE_WIDTH)
     @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(m, ty))) pluq_load_z_kernel!(Z, Y, m32, n32)
+    if opts.lazy_q
+        q = lq
+    end
     qdev = CuArray(Int32.(q))
     @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(m, ty))) pluq_scatter_solution_kernel!(X, Z, qdev, n32, m32)
     return CuModMatrix(X, N; new_size=(n, m))
@@ -444,11 +565,26 @@ function pluq_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOption
         end
     end
     isempty(mats) && return Any[]
-    firstF = pluq_new(mats[1], options=options)
+    opts = _resolve_options(options, mats[1])
+    firstF = pluq_new(mats[1], options=opts)
     out = Vector{typeof(firstF)}(undef, length(mats))
     out[1] = firstF
+    nstreams = min(opts.batch_streams, length(mats))
+    if nstreams == 1
+        for i in 2:length(mats)
+            out[i] = pluq_new(mats[i], options=opts)
+        end
+        return out
+    end
+    streams = [CuStream() for _ in 1:nstreams]
     for i in 2:length(mats)
-        out[i] = pluq_new(mats[i], options=options)
+        s = streams[(i - 1) % nstreams + 1]
+        CUDA.stream!(s) do
+            out[i] = pluq_new(mats[i], options=opts)
+        end
+    end
+    for s in streams
+        synchronize(s)
     end
     return out
 end
@@ -474,16 +610,39 @@ function inverse_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOpt
             end
         end
     end
+    isempty(mats) && return CuModMatrix[]
+    opts = _resolve_options(options, mats[1])
     out = Vector{CuModMatrix}(undef, length(mats))
+    nstreams = min(opts.batch_streams, length(mats))
+    if nstreams == 1
+        for i in eachindex(mats)
+            A = mats[i]
+            if rows(A) == cols(A)
+                out[i] = inverse_new(A, options=opts)
+            elseif rows(A) < cols(A)
+                out[i] = right_inverse_new(A, options=opts)
+            else
+                out[i] = left_inverse_new(A, options=opts)
+            end
+        end
+        return out
+    end
+    streams = [CuStream() for _ in 1:nstreams]
     for i in eachindex(mats)
         A = mats[i]
-        if rows(A) == cols(A)
-            out[i] = inverse_new(A, options=options)
-        elseif rows(A) < cols(A)
-            out[i] = right_inverse_new(A, options=options)
-        else
-            out[i] = left_inverse_new(A, options=options)
+        s = streams[(i - 1) % nstreams + 1]
+        CUDA.stream!(s) do
+            if rows(A) == cols(A)
+                out[i] = inverse_new(A, options=opts)
+            elseif rows(A) < cols(A)
+                out[i] = right_inverse_new(A, options=opts)
+            else
+                out[i] = left_inverse_new(A, options=opts)
+            end
         end
+    end
+    for s in streams
+        synchronize(s)
     end
     return out
 end
