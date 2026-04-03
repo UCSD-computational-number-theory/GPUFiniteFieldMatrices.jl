@@ -18,6 +18,7 @@ include("CuModMatrix/de_rham_test.jl")
 include("CuModMatrix/permutation_test.jl")
 include("CuModMatrix/triangular_test.jl")
 include("CuModMatrix/inverse/runtests.jl")
+include("KernelAbstractions/runtests.jl")
 
 function run_all_tests()
     @testset "CuModMatrix.jl" begin
@@ -37,6 +38,10 @@ function run_all_tests()
 
         @testset "Inverse Rewrite" begin
             test_inverse_rewrite()
+        end
+
+        @testset "KernelAbstractions" begin
+            test_kernel_abstractions_suite()
         end
         
         @testset "GPU Matrix Type" begin

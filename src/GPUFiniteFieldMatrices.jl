@@ -35,6 +35,7 @@ include("CuModMatrix/inverse/extract.jl")
 include("CuModMatrix/inverse/validation.jl")
 include("CuModMatrix/inverse/api.jl")
 include("CuModMatrix/inverse/batched_tiny.jl")
+include("KernelAbstractions/KernelAbstractions.jl")
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
@@ -69,5 +70,13 @@ export pluq_batched_4x4!, pluq_batched_8x8!, pluq_batched_16x16!, pluq_batched_3
 export inverse_batched_4x4!, inverse_batched_8x8!, inverse_batched_16x16!, inverse_batched_32x32!
 export right_inverse_new, left_inverse_new
 export pluq_extract_L, pluq_extract_U, pluq_check_identity
+export PLUQOptionsKA
+export pluq_new_ka, pluq_new_ka!, inverse_new_ka, inverse_pluq_new_ka, is_invertible_new_ka
+export right_inverse_new_ka, left_inverse_new_ka
+export pluq_new_batch_ka, inverse_new_batch_ka
+export pluq_batched_4x4_ka!, pluq_batched_8x8_ka!, pluq_batched_16x16_ka!, pluq_batched_32x32_ka!
+export inverse_batched_4x4_ka!, inverse_batched_8x8_ka!, inverse_batched_16x16_ka!, inverse_batched_32x32_ka!
+export pluq_extract_L_ka, pluq_extract_U_ka, pluq_check_identity_ka
+export add_ka!, sub_ka!, mul_ka!
 
 end
