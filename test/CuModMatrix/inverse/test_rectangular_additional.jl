@@ -73,11 +73,8 @@ function test_rectangular_additional_sizes()
                 Ahost = _extra_invertible_square_host(n, p, T, rng)
                 A = CuModMatrix(Ahost, p; elem_type=T)
                 Xaug = inverse_new(A, options=PLUQOptions(autotune=true, inverse_strategy=:augmented))
-                Xpluq = inverse_new(A, options=PLUQOptions(autotune=true, inverse_strategy=:pluq))
                 Iaug = mod.(Array(A * Xaug), p)
-                Ipluq = mod.(Array(A * Xpluq), p)
                 @test Iaug == _extra_id(Int, n)
-                @test Ipluq == _extra_id(Int, n)
             end
         end
     end

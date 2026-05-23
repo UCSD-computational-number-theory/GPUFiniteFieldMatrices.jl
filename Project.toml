@@ -19,6 +19,9 @@ ReLint = "b3cc710f-9c33-5bdb-a03d-a94903873e97"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
+[sources]
+ReLint = { url = "https://github.com/RelationalAI-oss/ReLint.jl", rev = "main" }
+
 [compat]
 AllocCheck = "0.2.3"
 Aqua = "0.8.14"
@@ -29,6 +32,5 @@ DispatchDoctor = "0.4.28"
 JET = "0.10.6"
 JuliaFormatter = "2.3.0"
 Plots = "1.41.6"
-ReLint = "0.9.0"
 Unroll = "0.1.0"
 julia = "1.12"

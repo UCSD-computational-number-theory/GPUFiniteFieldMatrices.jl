@@ -20,8 +20,6 @@ include("CuModMatrix/kernel_mul/stripe_mul.jl")
 include("KaratsubaMatrix/KaratsubaMatrix.jl")
 include("KaratsubaMatrix/KaratsubaKernels.jl")
 
-include("CuModMatrix/rref_lu_pluq/permutations.jl")
-include("CuModMatrix/rref_lu_pluq/pluq_kernels.jl")
 include("CuModMatrix/kernel_ops/common.jl")
 include("CuModMatrix/kernel_ops/add_ops.jl")
 include("CuModMatrix/kernel_ops/sub_ops.jl")
@@ -62,12 +60,8 @@ export mod_elements!, fill!
 
 # Export GPU operations
 export mat_mul_gpu_type, mat_mul_type_inplace!
-export perm_array_to_matrix
 export is_invertible, inverse, is_invertible_with_inverse
-export perm_array_to_matrix
-export apply_col_perm!, apply_row_perm!
 export mod_inv
-export pluq_gpu_kernel
 export upper_triangular_inverse_no_copy, lower_triangular_inverse_no_copy
 export forward_sub_gpu_type_32, backward_sub_gpu_type_32
 export PLUQOptions, PLUQFactorization
