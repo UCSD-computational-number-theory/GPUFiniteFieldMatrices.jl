@@ -332,18 +332,14 @@ function Base.transpose(A::CuModMatrix)
     return CuModMatrix(transpose(A.data), A.N; new_size=size(A))
 end
 
-function _setup_PLUQ(A::CuModMatrix; debug::Bool=false)
-    U, L, P, Q = pluq_gpu_kernel(A, debug=debug)
-    return U, L, P, Q
+function _setup_PLUQ(A::CuModMatrix)
+    return pluq_new(A)
 end
 
-function _is_invertible(U::CuModMatrix)
-
-    if rank(Array(U)) != minimum(size(U))
-        return false
-    end
-
-    return true
+function _is_invertible(F)
+    m = rows(F.LU)
+    n = cols(F.LU)
+    return m == n && F.rank == m
 end
 
 """
@@ -354,70 +350,19 @@ false and nothing. If it is, returns true and the
 inverse matrix.
 """
 function is_invertible_with_inverse(A::CuModMatrix; debug::Bool=false)
-
+    F = _setup_PLUQ(A)
+    if !_is_invertible(F)
+        return false, nothing
+    end
+    A_inv = inverse_new(A)
     if debug
         println("A")
         display(A)
-    end
-
-    # NVTX.@range "Setup PLUQ" begin
-        U, L, P, Q = _setup_PLUQ(A, debug=debug)
-    # end
-
-    # NVTX.@range "Check if invertible" begin
-        if !_is_invertible(U)
-            return false, nothing
-        end
-    # end
-
-    # NVTX.@range "Compute U_inv" begin
-        U_inv = upper_triangular_inverse_no_copy(U; debug=debug)
-    # end
-
-    # NVTX.@range "Compute L_inv" begin
-        L_inv = lower_triangular_inverse_no_copy(L; debug=debug)
-    # end
-
-    if debug
-        println("L")
-        display(L)
-        println("U")
-        display(U)
-        println("L_inv")
-        display(L_inv)
-        println("U_inv")
-        display(U_inv)
-    end
-
-    function _compute_A_inv(U_inv, L_inv, P, Q)
-        # NVTX.@range "Apply col perm" begin
-            apply_col_inv_perm!(P, L_inv)
-        # end
-
-        # NVTX.@range "Apply row inv perm" begin
-            apply_row_inv_perm!(Q, U_inv)
-        # end
-        
-        # NVTX.@range "Multiply" begin
-            A_inv = U_inv * L_inv
-        # end
-        
-        return A_inv
-    end
-
-    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
-
-    if debug
-        println("P")
-        display(P)
-        println("Q")
-        display(Q)
         println("A_inv")
         display(A_inv)
         println("A * A_inv")
-        display(A*A_inv)
+        display(A * A_inv)
     end
-
     return true, A_inv
 end
 
@@ -458,18 +403,28 @@ end
 Checks if a matrix is invertible mod N.
 """
 function is_invertible(A::CuModMatrix)
-
-    U, L, P, Q = _setup_PLUQ(A)
-
-    return _is_invertible(U)
+    return is_invertible_new(A)
 end
 
-function gcd(a,b)
-    a, b = abs(a), abs(b)
-    while b != 0
-        a, b = b, a % b
+function mod_inv(a::Integer, m::Integer)
+    aa = mod(a, m)
+    t = 0
+    newt = 1
+    r = m
+    newr = aa
+    while newr != 0
+        q = div(r, newr)
+        t, newt = newt, t - q * newt
+        r, newr = newr, r - q * newr
     end
-    return a
+    if r != 1
+        throw(DomainError((a, m), "inverse does not exist"))
+    end
+    return mod(t, m)
+end
+
+function mod_inv(a::Number, m::Integer)
+    return mod_inv(Int(round(a)), m)
 end
 
 """
@@ -478,27 +433,7 @@ end
 Computes the inverse of a matrix mod N.
 """
 function inverse(A::CuModMatrix)
-
-    U, L, P, Q = _setup_PLUQ(A)
-
-    if !_is_invertible(U)
-        throw(MatrixNotInvertibleException(
-            "Matrix is not invertible mod $(A.N)"
-        ))
-    end
-
-    U_inv = upper_triangular_inverse_no_copy(U)
-    L_inv = lower_triangular_inverse_no_copy(L)
-
-    function _compute_A_inv(U_inv, L_inv, P, Q)
-        apply_col_inv_perm!(P, L_inv)
-        apply_row_inv_perm!(Q, U_inv)
-        return U_inv * L_inv
-    end
-
-    A_inv = _compute_A_inv(U_inv, L_inv, P, Q)
-
-    return A_inv
+    return inverse_new(A)
 end
 
 # Additional utility functions
