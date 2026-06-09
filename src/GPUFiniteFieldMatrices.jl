@@ -15,8 +15,9 @@ using Unroll
 # keeps it a no-op for downstream users; the test run flips it on via the
 # `dispatch_doctor_mode` preference set in test/runtests.jl before this package
 # loads. Macro imports (CUDA/Unroll) stay OUTSIDE the `@stable begin` block per
-# DispatchDoctor's guidance; `@unstable` is the per-function escape hatch.
-using DispatchDoctor: @stable, @unstable
+# DispatchDoctor's guidance. (If a wrapped function is ever legitimately unstable,
+# import `@unstable` here too and annotate that function — none needed yet.)
+using DispatchDoctor: @stable
 
 const DEBUG = false
 
