@@ -267,6 +267,7 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
     threads = min(256, max(32, 32 * options.nftb))
     maxspan = kend - k0 + 1
     pivot_slot = CUDA.fill(Int32(maxspan * maxspan + 1), 1)
+    pivot_host = _pluq_host_i32_buffer()
     locp = options.lazy_q ? collect(1:maxspan) : Int[]
     locq = options.lazy_q ? collect(1:maxspan) : Int[]
     for k in k0:kend
@@ -285,7 +286,7 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
             blocks = max(1, cld(total, threads))
             @cuda threads=threads blocks=blocks pluq_find_pivot_kernel!(Adata, pivot_slot, kk, kend32, N32)
         end
-        pivot_lin = Int(Array(@view pivot_slot[1:1])[1])
+        pivot_lin = _pluq_read_i32!(pivot_host, pivot_slot)
         if pivot_lin > total
             break
         end

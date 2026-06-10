@@ -41,13 +41,12 @@ function pluq_trsm_left_panel_warp_kernel!(A, k0::Int32, kend::Int32, n::Int32, 
                 psum += Int64(_pluq_mod_mul_t(A[i, t], A[t, j], N))
                 t += 32
             end
-            v = Int32(rem(psum, Int64(N)))
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 16, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 8, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 4, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 2, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 1, 32)
-            v = Int32(rem(Int64(v), Int64(N)))
+            v = rem(psum, Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 16, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 8, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 4, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 2, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 1, 32), Int64(N))
             if lane == 1
                 acc = _pluq_mod_t(A[i, j] - eltype(A)(v), N)
                 A[i, j] = acc
@@ -104,13 +103,12 @@ function pluq_trsm_right_panel_warp_kernel!(A, k0::Int32, kend::Int32, n::Int32,
                 psum += Int64(_pluq_mod_mul_t(A[i, t], A[t, j], N))
                 t += 32
             end
-            v = Int32(rem(psum, Int64(N)))
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 16, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 8, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 4, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 2, 32)
-            v += CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 1, 32)
-            v = Int32(rem(Int64(v), Int64(N)))
+            v = rem(psum, Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 16, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 8, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 4, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 2, 32), Int64(N))
+            v = rem(v + CUDA.shfl_down_sync(CUDA.FULL_MASK, v, 1, 32), Int64(N))
             if lane == 1
                 acc = _pluq_mod_t(A[i, j] - eltype(A)(v), N)
                 invdiag = _pluq_mod_inv_t(A[j, j], N)

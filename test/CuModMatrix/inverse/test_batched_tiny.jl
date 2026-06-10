@@ -62,5 +62,18 @@ function test_batched_tiny_kernels()
         for i in eachindex(mats2)
             @test _check_identity_batch(mats2[i], invs[i], p)
         end
+
+        S = Matrix{Float32}(I, n, n)
+        S[2, :] .= S[1, :]
+        singular = [CuModMatrix(S, p; elem_type=Float32)]
+        if n == 4
+            @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException GPUFiniteFieldMatrices.inverse_batched_4x4!(singular)
+        elseif n == 8
+            @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException GPUFiniteFieldMatrices.inverse_batched_8x8!(singular)
+        elseif n == 16
+            @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException GPUFiniteFieldMatrices.inverse_batched_16x16!(singular)
+        else
+            @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException GPUFiniteFieldMatrices.inverse_batched_32x32!(singular)
+        end
     end
 end

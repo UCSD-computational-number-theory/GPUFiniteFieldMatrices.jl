@@ -17,6 +17,21 @@ function _id_matrix(::Type{T}, n::Int) where {T}
     return M
 end
 
+function _strategy_invertible_host(n::Int, N::Int, ::Type{T}=Int) where {T}
+    A = Matrix{T}(I, n, n)
+    for j in 2:n
+        A[1, j] = T(mod(3j + 5, N))
+    end
+    return A
+end
+
+function _assert_inverse_identity(A::CuModMatrix, X::CuModMatrix)
+    n = size(A, 1)
+    got = mod.(round.(Int, Array(A * X)), A.N)
+    want = _id_matrix(Int, n)
+    @test got == want
+end
+
 function test_identity_range()
     N = 101
     for n in 1:64
@@ -28,6 +43,21 @@ function test_identity_range()
         Iinv = inverse_new(Icu)
         @test Array(Iinv) == Ih
     end
+end
+
+function test_square_inverse_strategies()
+    N = 101
+    for strat in (:augmented, :pluq)
+        for n in (4, 16, 32, 33, 64, 129)
+            A = CuModMatrix(_strategy_invertible_host(n, N), N)
+            X = inverse_new(A, options=PLUQOptions(inverse_strategy=strat))
+            _assert_inverse_identity(A, X)
+        end
+    end
+
+    A = CuModMatrix(_strategy_invertible_host(33, N), N)
+    X = inverse_pluq_new(A)
+    _assert_inverse_identity(A, X)
 end
 
 function test_random_invertible_batch()
@@ -53,7 +83,37 @@ function test_random_singular_batch()
         end
         A = CuModMatrix(Ahost, N)
         @test !is_invertible_new(A)
+        @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException inverse_new(A, options=PLUQOptions(inverse_strategy=:augmented))
+        @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException inverse_new(A, options=PLUQOptions(inverse_strategy=:pluq))
     end
+end
+
+function test_rank_deficient_blocked_pluq()
+    N = 101
+    n = 64
+    Ahost = _strategy_invertible_host(n, N)
+    Ahost[2, :] = Ahost[1, :]
+    A = CuModMatrix(Ahost, N)
+    F = pluq_new(A)
+    @test F.rank < n
+    @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException inverse_new(A, options=PLUQOptions(inverse_strategy=:pluq))
+end
+
+function test_modulus_contracts()
+    A = CuModMatrix([1 0; 0 1], 9)
+    @test_throws GPUFiniteFieldMatrices.CuModMatrixModulusNotPrimeException inverse_new(A, options=PLUQOptions(check_prime=true))
+    @test inverse_new(A, options=PLUQOptions(check_prime=false)) isa CuModMatrix
+
+    bigN = Int(typemax(Int32)) + 2
+    Abig = CuModMatrix([1.0 0.0; 0.0 1.0], bigN; mod=false, elem_type=Float64)
+    @test_throws GPUFiniteFieldMatrices.InverseOverflowError inverse_new(Abig)
+
+    mersenne = 2_147_483_647
+    H = Float64[mersenne - 1 0; 0 mersenne - 1]
+    Alarge = CuModMatrix(H, mersenne; elem_type=Float64)
+    @test_throws GPUFiniteFieldMatrices.InverseOverflowError inverse_new(Alarge, options=PLUQOptions(inverse_strategy=:pluq, trsm_mode=:warp))
+    Xaug = inverse_new(Alarge, options=PLUQOptions(inverse_strategy=:augmented))
+    @test Array(Xaug)[1:2, 1:2] == H
 end
 
 function test_padding_sensitive_sizes()

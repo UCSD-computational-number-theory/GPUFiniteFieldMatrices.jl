@@ -28,11 +28,20 @@ function test_inverse_rewrite()
     @testset "Identity Range" begin
         test_identity_range()
     end
+    @testset "Square Inverse Strategies" begin
+        test_square_inverse_strategies()
+    end
     @testset "Random Invertible Batch" begin
         test_random_invertible_batch()
     end
     @testset "Random Singular Batch" begin
         test_random_singular_batch()
+    end
+    @testset "Rank Deficient Blocked PLUQ" begin
+        test_rank_deficient_blocked_pluq()
+    end
+    @testset "Modulus Contracts" begin
+        test_modulus_contracts()
     end
     @testset "Padding Sensitive Sizes" begin
         test_padding_sensitive_sizes()

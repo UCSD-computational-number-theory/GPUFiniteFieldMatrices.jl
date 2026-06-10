@@ -1,5 +1,50 @@
 @inline _to_i32(x::Integer) = Int32(x)
 
+const _PLUQ_MAX_SAFE_MODULUS = Int(typemax(Int32))
+
+function _pluq_is_prime_host(n::Integer)
+    n < 2 && return false
+    n == 2 && return true
+    iseven(n) && return false
+    d = 3
+    limit = isqrt(n)
+    while d <= limit
+        n % d == 0 && return false
+        d += 2
+    end
+    return true
+end
+
+function _validate_inverse_modulus(options::PLUQOptions, A::CuModMatrix)
+    N = A.N
+    if N < 2
+        throw(CuModMatrixModulusNotPrimeException("modulus $(N) must be at least 2"))
+    end
+    if N > _PLUQ_MAX_SAFE_MODULUS
+        throw(InverseOverflowError("modulus $(N) exceeds the Int32 CUDA-kernel limit $(_PLUQ_MAX_SAFE_MODULUS)"))
+    end
+    if options.check_prime && !_pluq_is_prime_host(N)
+        throw(CuModMatrixModulusNotPrimeException("modulus $(N) is not prime"))
+    end
+    return nothing
+end
+
+function _validate_inverse_matmul_modulus(A::CuModMatrix)
+    if find_max_ops(eltype(A.data), A.N) < 1
+        throw(InverseOverflowError("modulus $(A.N) is too large for one modular matrix multiplication with datatype $(eltype(A.data))"))
+    end
+    return nothing
+end
+
+function _pluq_host_i32_buffer()
+    return CUDA.pin(Vector{Int32}(undef, 1))
+end
+
+function _pluq_read_i32!(hostbuf::Vector{Int32}, devbuf)
+    copyto!(hostbuf, devbuf)
+    return Int(hostbuf[1])
+end
+
 function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
     if !options.autotune
         return options
@@ -79,6 +124,7 @@ function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
 end
 
 function _resolve_options(options::PLUQOptions, A::CuModMatrix)
+    _validate_inverse_modulus(options, A)
     return _pluq_autotune_options(options, max(rows(A), cols(A)), eltype(A.data))
 end
 
@@ -87,6 +133,9 @@ end
 
 Compute a blocked PLUQ factorization in place on GPU-resident data and return
 `PLUQFactorization` with packed LU and permutation vectors.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 """
 function pluq_new!(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     opts = _resolve_options(options, A)
@@ -104,6 +153,9 @@ end
     pluq_new(A; options=PLUQOptions())
 
 Compute a blocked PLUQ factorization on a copy of `A`.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 """
 function pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     Adata = copy(A.data)
@@ -115,6 +167,9 @@ end
     is_invertible_new(A; options=PLUQOptions())
 
 Return `true` iff `A` has full rank under the new GPU PLUQ path.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 """
 function is_invertible_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     m = rows(A)
@@ -278,8 +333,14 @@ end
 """
     inverse_new(A; options=PLUQOptions())
 
-Compute the inverse over `mod N` using a fully GPU Gauss-Jordan elimination
-path on an augmented matrix, without converting `A` to a CPU `Array`.
+Compute the inverse over `mod N`.
+
+The default `PLUQOptions` route uses the PLUQ factorization pipeline. Passing
+`PLUQOptions(inverse_strategy=:augmented)` selects the GPU Gauss-Jordan
+reference path on `[A I]`.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 """
 function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     if rows(A) != cols(A)
@@ -303,6 +364,7 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     @cuda threads=(tx, ty) blocks=(bx, by) pluq_init_aug_kernel!(aug, A.data, n32)
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(n + 1), 1)
+    pivot_host = _pluq_host_i32_buffer()
     for k in 1:n
         k32 = _to_i32(k)
         CUDA.fill!(pivot_slot, _to_i32(n + 1))
@@ -315,7 +377,7 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         else
             @cuda threads=threads blocks=max(1, cld(n - k + 1, threads)) pluq_aug_find_pivot_kernel!(aug, pivot_slot, k32, n32, N32)
         end
-        prow = Int(Array(@view pivot_slot[1:1])[1])
+        prow = _pluq_read_i32!(pivot_host, pivot_slot)
         if prow > n
             throw(InverseNotDefinedException("matrix is singular modulo $(A.N)"))
         end
@@ -335,11 +397,22 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     return CuModMatrix(out, N; new_size=(n, n))
 end
 
+"""
+    inverse_pluq_new(A; options=PLUQOptions())
+
+Compute the inverse over `mod N` through the PLUQ factorization pipeline:
+factor `A`, extract `L` and `U`, invert the triangular factors, multiply them,
+and apply row/column permutations.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
+"""
 function inverse_pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     if rows(A) != cols(A)
         throw(CuModMatrixNotSquareException("matrix must be square"))
     end
     opts = _resolve_options(options, A)
+    _validate_inverse_matmul_modulus(A)
     n = rows(A)
     F = pluq_new(A, options=opts)
     if F.rank != n
@@ -432,6 +505,11 @@ Compute a right inverse `X` such that `A*X = I` for full row-rank rectangular
 
 This uses Gauss-Jordan elimination on `[A | I_m]` with row and column pivoting.
 If rank is smaller than `m`, no right inverse exists and an exception is thrown.
+`inverse_strategy` only controls square `inverse_new`; this rectangular path is
+always augmented rank-revealing elimination.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 
 Example:
 ```julia
@@ -461,6 +539,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     lq = opts.lazy_q ? collect(1:n) : Int[]
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(m * n + 1), 1)
+    pivot_host = _pluq_host_i32_buffer()
     rank = 0
     for k in 1:m
         span_r = m - k + 1
@@ -480,7 +559,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         else
             @cuda threads=threads blocks=max(1, cld(total, threads)) pluq_find_pivot_rect_kernel!(aug, pivot_slot, k32, m32, n32, N32)
         end
-        pivlin = Int(Array(@view pivot_slot[1:1])[1])
+        pivlin = _pluq_read_i32!(pivot_host, pivot_slot)
         if pivlin > total
             break
         end
@@ -523,6 +602,11 @@ end
 
 Compute a left inverse `X` such that `X*A = I` for full column-rank
 rectangular `A` with `rows(A) >= cols(A)` over `GF(N)`.
+`inverse_strategy` only controls square `inverse_new`; this rectangular path is
+always augmented rank-revealing elimination via transposition.
+
+`A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
+precondition on the host before launching GPU kernels.
 
 Example:
 ```julia
@@ -548,6 +632,9 @@ end
     pluq_new_batch(mats; options=PLUQOptions())
 
 Run `pluq_new` across a batch of matrices and return factorization objects.
+
+Each modulus must be prime. Pass `check_prime=true` in `PLUQOptions` to validate
+the precondition for the first matrix before launching GPU kernels.
 """
 function pluq_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
     if !isempty(mats)
@@ -594,6 +681,9 @@ end
 
 Run the fastest inverse path across a batch. For rectangular matrices this
 dispatches to one-sided inverses.
+
+Each modulus must be prime. Pass `check_prime=true` in `PLUQOptions` to validate
+the precondition for the first matrix before launching GPU kernels.
 """
 function inverse_new_batch(mats::AbstractVector{<:CuModMatrix}; options::PLUQOptions=PLUQOptions())
     if !isempty(mats)
