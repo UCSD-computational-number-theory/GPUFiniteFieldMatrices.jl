@@ -9,6 +9,10 @@ Fields:
 - `pivot_policy`: pivot policy tag (`:first_nonzero` currently).
 - `lazy_q`: enable lazy permutation-vector composition inside basecase.
 - `nftb`: tunable tiny-kernel thread grouping factor (32 * `nftb`, clamped).
+- `inverse_strategy`: square inverse algorithm (`:pluq` default, `:augmented`
+  reference path). Rectangular one-sided inverses use augmented rank-revealing
+  elimination regardless of this option.
+- `check_prime`: validate the finite-field precondition on entry.
 """
 struct PLUQOptions
     blocksize::Int
@@ -45,7 +49,7 @@ function PLUQOptions(;
     schur_tile::Int=16,
     schur_transpose_u::Bool=false,
     mod_backend::Symbol=:auto,
-    inverse_strategy::Symbol=:augmented,
+    inverse_strategy::Symbol=:pluq,
     autotune::Bool=false,
     batch_streams::Int=1,
     check_prime::Bool=false

@@ -58,14 +58,14 @@ function test_rectangular_additional_sizes()
             for (m, n) in row_cases
                 Ahost = _extra_full_row_rank_host(m, n, p, T, rng)
                 A = CuModMatrix(Ahost, p; elem_type=T)
-                X = right_inverse_new(A, options=PLUQOptions(autotune=true, inverse_strategy=:augmented))
+                X = right_inverse_new(A, options=PLUQOptions(autotune=true))
                 AX = mod.(Array(A * X), p)
                 @test AX == _extra_id(Int, m)
             end
             for (m, n) in col_cases
                 Ahost = _extra_full_col_rank_host(m, n, p, T, rng)
                 A = CuModMatrix(Ahost, p; elem_type=T)
-                X = left_inverse_new(A, options=PLUQOptions(autotune=true, inverse_strategy=:augmented))
+                X = left_inverse_new(A, options=PLUQOptions(autotune=true))
                 XA = mod.(Array(X * A), p)
                 @test XA == _extra_id(Int, n)
             end

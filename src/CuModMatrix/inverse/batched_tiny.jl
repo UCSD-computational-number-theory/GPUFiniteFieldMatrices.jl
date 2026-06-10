@@ -191,6 +191,7 @@ function _pluq_batched_tiny!(mats::AbstractVector{<:CuModMatrix}, n::Int)
     isempty(mats) && return PLUQFactorization[]
     !_batch_supported_n(n) && throw(ArgumentError("supported sizes are 4, 8, 16, 32"))
     N = mats[1].N
+    _validate_inverse_modulus(PLUQOptions(), mats[1])
     T = eltype(mats[1].data)
     for m in mats
         if m.N != N || eltype(m.data) != T
@@ -218,6 +219,7 @@ function _inverse_batched_tiny(mats::AbstractVector{<:CuModMatrix}, n::Int)
     isempty(mats) && return CuModMatrix[]
     !_batch_supported_n(n) && throw(ArgumentError("supported sizes are 4, 8, 16, 32"))
     N = mats[1].N
+    _validate_inverse_modulus(PLUQOptions(), mats[1])
     T = eltype(mats[1].data)
     for m in mats
         if rows(m) != n || cols(m) != n
@@ -244,11 +246,23 @@ function _inverse_batched_tiny(mats::AbstractVector{<:CuModMatrix}, n::Int)
     return out
 end
 
+"""
+    pluq_batched_4x4!(mats)
+
+Run the tiny batched PLUQ factorization for fixed-size square matrices over a
+prime modulus. Variants are available for 4, 8, 16, and 32.
+"""
 pluq_batched_4x4!(mats::AbstractVector{<:CuModMatrix}) = _pluq_batched_tiny!(mats, 4)
 pluq_batched_8x8!(mats::AbstractVector{<:CuModMatrix}) = _pluq_batched_tiny!(mats, 8)
 pluq_batched_16x16!(mats::AbstractVector{<:CuModMatrix}) = _pluq_batched_tiny!(mats, 16)
 pluq_batched_32x32!(mats::AbstractVector{<:CuModMatrix}) = _pluq_batched_tiny!(mats, 32)
 
+"""
+    inverse_batched_4x4!(mats)
+
+Run the tiny batched inverse kernel for fixed-size square matrices over a prime
+modulus. Variants are available for 4, 8, 16, and 32.
+"""
 inverse_batched_4x4!(mats::AbstractVector{<:CuModMatrix}) = _inverse_batched_tiny(mats, 4)
 inverse_batched_8x8!(mats::AbstractVector{<:CuModMatrix}) = _inverse_batched_tiny(mats, 8)
 inverse_batched_16x16!(mats::AbstractVector{<:CuModMatrix}) = _inverse_batched_tiny(mats, 16)

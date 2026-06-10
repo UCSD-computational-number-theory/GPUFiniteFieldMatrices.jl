@@ -159,6 +159,7 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int;
     m32 = Int32(m)
     n32 = Int32(n)
     pivot_slot = CUDA.fill(Int32(max(1, m * n + 1)), 1)
+    pivot_host = _pluq_host_i32_buffer()
     for k in 1:rmax
         span_r = m - k + 1
         span_c = n - k + 1
@@ -175,7 +176,7 @@ function pluq_rectangular_rank_gpu!(Adata::CuArray{T,2}, N::Int, m::Int, n::Int;
         else
             @cuda threads=threads blocks=blocks pluq_find_pivot_rect_kernel!(Adata, pivot_slot, k32, m32, n32, N32)
         end
-        pivlin = Int(Array(@view pivot_slot[1:1])[1])
+        pivlin = _pluq_read_i32!(pivot_host, pivot_slot)
         if pivlin > total
             break
         end
