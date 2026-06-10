@@ -4,6 +4,7 @@ using LinearAlgebra
 using BenchmarkTools
 using Suppressor
 using Unroll
+using ExplicitImports
 
 using GPUFiniteFieldMatrices
 
@@ -47,6 +48,30 @@ function run_all_tests()
         end
 
     end 
+end
+
+# ExplicitImports is a CPU-runnable quality gate: it runs UNCONDITIONALLY,
+# outside the `CUDA.functional()` guard below, so the GPU-less CI is not vacuous.
+# Each granular check returns `nothing` on success and throws otherwise.
+@testset "ExplicitImports" begin
+    @test check_no_implicit_imports(GPUFiniteFieldMatrices) === nothing
+    @test check_no_stale_explicit_imports(GPUFiniteFieldMatrices) === nothing
+    @test check_all_explicit_imports_via_owners(GPUFiniteFieldMatrices) === nothing
+    @test check_all_explicit_imports_are_public(GPUFiniteFieldMatrices) === nothing
+    @test check_no_self_qualified_accesses(GPUFiniteFieldMatrices) === nothing
+
+    # `CuRef` is owned by CUDACore but re-exported through CUDA's CUBLAS
+    # submodule; accessing it via CUBLAS is a re-export false positive.
+    @test check_all_qualified_accesses_via_owners(
+        GPUFiniteFieldMatrices; ignore=(:CuRef,)) === nothing
+
+    # The ignored names are non-public internals that the GPU code genuinely
+    # needs and for which there is no public alternative:
+    #   CHOLMOD                          – SparseArrays.CHOLMOD.Dense, used in a copyto! signature
+    #   CuRef, gemm!, gemv!, gemv_batched! – CUDA.CUBLAS low-level BLAS entry points
+    @test check_all_qualified_accesses_are_public(
+        GPUFiniteFieldMatrices;
+        ignore=(:CHOLMOD, :CuRef, :gemm!, :gemv!, :gemv_batched!)) === nothing
 end
 
 if CUDA.functional()
