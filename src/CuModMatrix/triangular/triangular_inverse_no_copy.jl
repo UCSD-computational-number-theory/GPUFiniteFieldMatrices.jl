@@ -201,7 +201,7 @@ function upper_triangular_inverse_no_copy(A::CuModMatrix; debug::Bool=false)
         return backward_sub_gpu_type_32(A, 0, 0)
     end
 
-    A_inv = GPUFiniteFieldMatrices.zeros(eltype(A.data), size(A)[2], size(A)[1], A.N)
+    A_inv = zeros(eltype(A.data), size(A)[2], size(A)[1], A.N)
 
     if debug
         println("size(A.data): ", size(A.data))
@@ -454,7 +454,7 @@ function lower_triangular_inverse_no_copy(A::CuModMatrix; debug::Bool=false)
         return forward_sub_gpu_type_32(A, 0, 0)
     end
 
-    A_inv = GPUFiniteFieldMatrices.zeros(eltype(A.data), size(A)[2], size(A)[1], A.N)
+    A_inv = zeros(eltype(A.data), size(A)[2], size(A)[1], A.N)
 
     if rows <= cols #square or wide
         _recursive_lower_triangular_inverse_no_copy(

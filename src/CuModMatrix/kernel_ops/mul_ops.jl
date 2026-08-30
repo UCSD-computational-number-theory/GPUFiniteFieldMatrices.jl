@@ -52,7 +52,7 @@ function *(s::Number, A::CuModArray)
 end
 
 function *(A::CuModMatrix, B::CuModMatrix)
-    C = GPUFiniteFieldMatrices.zeros(eltype(A.data), rows(A), cols(B), A.N)
+    C = zeros(eltype(A.data), rows(A), cols(B), A.N)
     stripe_mul!(C, A, B)
     return C
 end

@@ -701,7 +701,7 @@ end
 Sets all of the entries of A to zero, in place.
 
 """
-zero!(A::CuModArray) = CUDA.fill!(A.data, zero(eltype(A.data)))
+zero!(A::CuModArray) = fill!(A.data, zero(eltype(A.data)))
 
 """
     mod_elements!(A, [mod_N])
@@ -729,7 +729,7 @@ All elements are reduced modulo new_N.
 """
 function change_modulus(A::CuModArray, new_N::Integer)
     (dataRows,dataCols) = size(A.data)
-    result = GPUFiniteFieldMatrices.zeros(eltype(A.data), dataRows-TILE_WIDTH, dataCols-TILE_WIDTH, new_N)
+    result = zeros(eltype(A.data), dataRows-TILE_WIDTH, dataCols-TILE_WIDTH, new_N)
     
     if new_N < A.N
         mod!(result.data, A.data, new_N)

@@ -1,13 +1,13 @@
 module GPUFiniteFieldMatrices
 
-using CUDA
-using LinearAlgebra
-using SparseArrays
-using IterTools
-using BenchmarkTools
-using CSV
-using DelimitedFiles
-using Unroll
+using CUDA: CUDA, @cuda, CuArray, CuDeviceMatrix, CuDeviceVector, blockDim, blockIdx, gridDim, threadIdx
+using LinearAlgebra: LinearAlgebra, I, mul!, rank
+using SparseArrays: SparseArrays
+using IterTools: IterTools
+using BenchmarkTools: BenchmarkTools
+using CSV: CSV
+using DelimitedFiles: DelimitedFiles
+using Unroll: Unroll, @unroll
 
 const DEBUG = false
 
