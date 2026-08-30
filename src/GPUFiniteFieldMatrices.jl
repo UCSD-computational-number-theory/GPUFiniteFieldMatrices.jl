@@ -9,7 +9,19 @@ using CSV
 using DelimitedFiles
 using Unroll
 
+# --- harden: DispatchDoctor return-type-stability gate (bead gfm-kvf.4.5) ---
+# `@stable` wraps every function defined in the module body below (propagating
+# through `include`) with a return-type-stability check. `default_mode="disable"`
+# keeps it a no-op for downstream users; the test run flips it on via the
+# `dispatch_doctor_mode` preference set in test/runtests.jl before this package
+# loads. Macro imports (CUDA/Unroll) stay OUTSIDE the `@stable begin` block per
+# DispatchDoctor's guidance. (If a wrapped function is ever legitimately unstable,
+# import `@unstable` here too and annotate that function — none needed yet.)
+using DispatchDoctor: @stable
+
 const DEBUG = false
+
+@stable default_mode = "disable" begin
 
 include("CuModMatrix/CuModMatrix.jl")
 
@@ -31,6 +43,8 @@ include("CuModMatrix/kernel_ops/mod_ops.jl")
 
 include("CuModMatrix/triangular/triangular_inverse_no_copy.jl")
 include("CuModMatrix/triangular/substitution_inplace.jl")
+
+end # @stable default_mode = "disable"
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector
