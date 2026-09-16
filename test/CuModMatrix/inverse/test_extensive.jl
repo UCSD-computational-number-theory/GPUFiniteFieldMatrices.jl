@@ -1,3 +1,5 @@
+using Random
+
 function _random_invertible_matrix(n::Int, N::Int; max_tries::Int=40)
     for _ in 1:max_tries
         Ahost = rand(0:(N - 1), n, n)
@@ -72,6 +74,18 @@ function test_random_invertible_batch()
         right = _id_matrix(eltype(left), n)
         @test left == right
     end
+end
+
+function test_dense_random_blocked_inverse()
+    N = 101
+    rng = Random.MersenneTwister(9096)
+    Ahost = Float32.(rand(rng, 0:(N - 1), 96, 96))
+    A = CuModMatrix(Ahost, N; elem_type=Float32)
+    options = PLUQOptions(blocksize=64, basecase=32)
+    F = pluq_new(A, options=options)
+    @test F.rank == 96
+    @test pluq_check_identity(F, A)
+    _assert_inverse_identity(A, inverse_new(A, options=options))
 end
 
 function test_random_singular_batch()

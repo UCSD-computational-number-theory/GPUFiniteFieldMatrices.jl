@@ -116,23 +116,23 @@ end
 Kernel for right upper-triangular solve on trailing rows:
 `L21 * U11 = A21`, writing `L21` in place.
 
-Each thread processes one trailing row and solves panel columns backward.
+Each thread processes one trailing row and solves panel columns forward.
 """
 function pluq_trsm_right_panel_kernel!(A, k0::Int32, kend::Int32, n::Int32, N::Int32)
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + kend
     stride = blockDim().x * gridDim().x
     while i <= n
-        j = kend
-        while j >= k0
+        j = k0
+        while j <= kend
             acc = _pluq_mod_t(A[i, j], N)
-            t = j + 1
-            while t <= kend
+            t = k0
+            while t < j
                 acc = _pluq_mod_t(acc - _pluq_mod_mul_t(A[i, t], A[t, j], N), N)
                 t += 1
             end
             invdiag = _pluq_mod_inv_t(A[j, j], N)
             A[i, j] = _pluq_mod_mul_t(acc, invdiag, N)
-            j -= 1
+            j += 1
         end
         i += stride
     end
@@ -153,17 +153,17 @@ function pluq_trsm_right_panel_delayed_kernel!(A, dinv, dinv_offset::Int32,
     i = (blockIdx().x - 1) * blockDim().x + threadIdx().x + kend
     stride = blockDim().x * gridDim().x
     while i <= n
-        j = kend
-        while j >= k0
+        j = k0
+        while j <= kend
             acc = A[i, j]
-            t = j + Int32(1)
-            while t <= kend
+            t = k0
+            while t < j
                 acc -= A[i, t] * A[t, j]
                 t += Int32(1)
             end
             reduced = _pluq_mod_t(acc, N)
             A[i, j] = _pluq_mod_mul_t(reduced, dinv[dinv_offset + j - k0 + Int32(1)], N)
-            j -= Int32(1)
+            j += Int32(1)
         end
         i += stride
     end
@@ -177,11 +177,11 @@ function pluq_trsm_right_panel_warp_kernel!(A, k0::Int32, kend::Int32, n::Int32,
     i = kend + wid + (blockIdx().x - 1) * nwarps
     stride = gridDim().x * nwarps
     while i <= n
-        j = kend
-        while j >= k0
+        j = k0
+        while j <= kend
             psum = Int64(0)
-            t = j + lane
-            while t <= kend
+            t = k0 + lane - Int32(1)
+            while t < j
                 psum += Int64(_pluq_mod_mul_t(A[i, t], A[t, j], N))
                 t += 32
             end
@@ -197,7 +197,7 @@ function pluq_trsm_right_panel_warp_kernel!(A, k0::Int32, kend::Int32, n::Int32,
                 A[i, j] = _pluq_mod_mul_t(acc, invdiag, N)
             end
             CUDA.sync_warp(CUDA.FULL_MASK)
-            j -= 1
+            j += 1
         end
         i += stride
     end
@@ -213,11 +213,11 @@ function pluq_trsm_right_panel_warp_delayed_kernel!(A, dinv, dinv_offset::Int32,
     i = kend + wid + (blockIdx().x - 1) * nwarps
     stride = gridDim().x * nwarps
     while i <= n
-        j = kend
-        while j >= k0
+        j = k0
+        while j <= kend
             psum = zero(eltype(A))
-            t = j + lane
-            while t <= kend
+            t = k0 + lane - Int32(1)
+            while t < j
                 psum += A[i, t] * A[t, j]
                 t += Int32(32)
             end
@@ -232,7 +232,7 @@ function pluq_trsm_right_panel_warp_delayed_kernel!(A, dinv, dinv_offset::Int32,
                 A[i, j] = _pluq_mod_mul_t(reduced, dinv[didx], N)
             end
             CUDA.sync_warp(CUDA.FULL_MASK)
-            j -= Int32(1)
+            j += Int32(1)
         end
         i += stride
     end
@@ -285,7 +285,7 @@ Compute the right solve on trailing block rows:
 `L21 * U11 = A21`, writing `L21` in place in `Adata`.
 
 `U11` is interpreted as upper-triangular from packed LU panel.
-Columns `kend:-1:k0` are solved backward over rows `kend+1:n`.
+Columns `k0:kend` are solved forward over rows `kend+1:n`.
 
 Example:
 ```julia

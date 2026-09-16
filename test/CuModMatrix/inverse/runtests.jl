@@ -34,6 +34,9 @@ function test_inverse_rewrite()
     @testset "Random Invertible Batch" begin
         test_random_invertible_batch()
     end
+    @testset "Dense Random Blocked Inverse" begin
+        test_dense_random_blocked_inverse()
+    end
     @testset "Random Singular Batch" begin
         test_random_singular_batch()
     end
