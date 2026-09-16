@@ -43,6 +43,18 @@ function test_inverse_rewrite()
     @testset "Modulus Contracts" begin
         test_modulus_contracts()
     end
+    @testset "Modulus Diversity" begin
+        test_modulus_diversity()
+    end
+    @testset "API Rejections" begin
+        test_api_rejections()
+    end
+    @testset "Non-involutory Permutation Inverse" begin
+        test_noninvolutory_permutation_inverse()
+    end
+    @testset "Batch Fallbacks" begin
+        test_batch_fallbacks()
+    end
     @testset "Padding Sensitive Sizes" begin
         test_padding_sensitive_sizes()
     end

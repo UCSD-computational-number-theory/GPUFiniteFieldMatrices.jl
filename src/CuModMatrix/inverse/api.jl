@@ -50,76 +50,48 @@ function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
         return options
     end
     if n <= 32
-        return PLUQOptions(
+        return PLUQOptions(options;
             blocksize=32,
             basecase=32,
-            pivot_policy=options.pivot_policy,
-            lazy_q=options.lazy_q,
             nftb=4,
-            pivot_warp_kernel=options.pivot_warp_kernel,
             trsm_mode=:auto,
             trsm_warp_threshold=16,
             schur_tile=8,
-            schur_transpose_u=options.schur_transpose_u,
-            mod_backend=options.mod_backend,
-            inverse_strategy=options.inverse_strategy,
             autotune=false,
             batch_streams=max(1, options.batch_streams),
-            check_prime=options.check_prime,
         )
     elseif n <= 256
-        return PLUQOptions(
+        return PLUQOptions(options;
             blocksize=64,
             basecase=32,
-            pivot_policy=options.pivot_policy,
-            lazy_q=options.lazy_q,
             nftb=T == Float32 ? 8 : 4,
-            pivot_warp_kernel=options.pivot_warp_kernel,
             trsm_mode=:auto,
             trsm_warp_threshold=24,
             schur_tile=16,
-            schur_transpose_u=options.schur_transpose_u,
-            mod_backend=options.mod_backend,
-            inverse_strategy=options.inverse_strategy,
             autotune=false,
             batch_streams=max(1, options.batch_streams),
-            check_prime=options.check_prime,
         )
     elseif n <= 1536
-        return PLUQOptions(
+        return PLUQOptions(options;
             blocksize=96,
             basecase=32,
-            pivot_policy=options.pivot_policy,
-            lazy_q=options.lazy_q,
             nftb=T == Float32 ? 8 : 6,
-            pivot_warp_kernel=options.pivot_warp_kernel,
             trsm_mode=:auto,
             trsm_warp_threshold=32,
             schur_tile=16,
-            schur_transpose_u=options.schur_transpose_u,
-            mod_backend=options.mod_backend,
-            inverse_strategy=options.inverse_strategy,
             autotune=false,
             batch_streams=max(1, options.batch_streams),
-            check_prime=options.check_prime,
         )
     end
-    return PLUQOptions(
+    return PLUQOptions(options;
         blocksize=128,
         basecase=32,
-        pivot_policy=options.pivot_policy,
-        lazy_q=options.lazy_q,
         nftb=T == Float32 ? 8 : 6,
-        pivot_warp_kernel=options.pivot_warp_kernel,
         trsm_mode=:panel,
         trsm_warp_threshold=32,
         schur_tile=16,
-        schur_transpose_u=options.schur_transpose_u,
-        mod_backend=options.mod_backend,
-        inverse_strategy=options.inverse_strategy,
         autotune=false,
         batch_streams=max(1, options.batch_streams),
-        check_prime=options.check_prime,
     )
 end
 
@@ -424,8 +396,11 @@ function inverse_pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     Uinv = upper_triangular_inverse_no_copy(U)
     M = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
     mul!(M, Uinv, Linv)
-    pdev = CuArray(Int32.(F.q))
-    qdev = CuArray(Int32.(F.p))
+    # P*A*Q = L*U implies A^-1 = Q*U^-1*L^-1*P.  The stored vectors are
+    # gather permutations, so applying Q and P on these opposite sides needs
+    # their inverse gather maps.
+    pdev = CuArray(Int32.(pluq_inverse_perm(F.q)))
+    qdev = CuArray(Int32.(pluq_inverse_perm(F.p)))
     out = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
     tx = 16
     ty = 16

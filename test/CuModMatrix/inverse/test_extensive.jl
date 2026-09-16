@@ -116,6 +116,44 @@ function test_modulus_contracts()
     @test Array(Xaug)[1:2, 1:2] == H
 end
 
+function test_modulus_diversity()
+    for N in (2, 101)
+        A = CuModMatrix([1 1; 0 1], N)
+        for strategy in (:augmented, :pluq)
+            X = inverse_new(A, options=PLUQOptions(inverse_strategy=strategy, check_prime=true))
+            @test mod.(round.(Int, Array(A * X)), N) == Matrix{Int}(I, 2, 2)
+        end
+    end
+end
+
+function test_api_rejections()
+    wide = CuModMatrix([1 0 0; 0 1 0], 101)
+    tall = CuModMatrix([1 0; 0 1; 0 0], 101)
+    @test_throws GPUFiniteFieldMatrices.CuModMatrixNotSquareException inverse_new(wide)
+    @test_throws GPUFiniteFieldMatrices.CuModArraySizeMismatchException right_inverse_new(tall)
+    @test_throws GPUFiniteFieldMatrices.CuModArraySizeMismatchException left_inverse_new(wide)
+end
+
+function test_noninvolutory_permutation_inverse()
+    # Exercises permutation cycles longer than two; using p/q directly instead
+    # of their inverse maps returns a permutation matrix rather than identity.
+    H = [
+        0 0 0 0 0 0 0 -3 0 0;
+        0 0 0 0 0 0 0 0 -3 0;
+        0 1 0 0 0 0 0 0 0 0;
+        0 0 1 0 0 0 0 0 0 0;
+        0 -2 0 0 0 0 0 0 0 -3;
+        0 0 -2 0 2 0 0 0 0 0;
+        0 0 0 1 0 2 0 0 0 0;
+        0 -3 0 -2 0 0 0 -1 0 0;
+        0 0 -3 0 0 0 2 0 -1 0;
+        1 0 0 -3 0 0 0 0 0 -1;
+    ]
+    A = CuModMatrix(H, 7)
+    X = inverse_new(A, options=PLUQOptions(inverse_strategy=:pluq))
+    @test mod.(round.(Int, Array(A * X)), 7) == Matrix{Int}(I, 10, 10)
+end
+
 function test_padding_sensitive_sizes()
     N = 101
     for n in (1, 2, 3, 31, 32, 33, 63, 64)

@@ -264,7 +264,8 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
     rank = 0
     n32 = Int32(n)
     N32 = Int32(N)
-    threads = min(256, max(32, 32 * options.nftb))
+    # The shared-memory tree reduction requires a power-of-two block size.
+    threads = min(256, max(32, nextpow(2, 32 * options.nftb)))
     maxspan = kend - k0 + 1
     pivot_slot = CUDA.fill(Int32(maxspan * maxspan + 1), 1)
     pivot_host = _pluq_host_i32_buffer()

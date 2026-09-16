@@ -171,8 +171,12 @@ function pluq_schur_update_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::Int,
     if trailing <= 64
         tile = 8
     elseif trailing >= 1024 && T == Float32
-        tile = max(tile, 32)
+        # The 32x32 kernel needs 1024 threads, but register pressure can lower
+        # its device-specific launch limit (640 on RTX 3060). Keep the portable
+        # 16x16 geometry until launch-configuration-driven tiling is available.
+        tile = 16
     end
+    tile = min(tile, 16)
     tx = tile
     ty = tile
     blocks = (max(1, cld(trailing, tx)), max(1, cld(trailing, ty)))
