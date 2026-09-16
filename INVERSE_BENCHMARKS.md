@@ -29,8 +29,12 @@ large-square table.
 - GPU: NVIDIA GeForce RTX 3060, 12 GB, driver 581.80, CUDA runtime 13.2.
 - Julia: 1.12.7; CUDA.jl 6.1.1.
 - Timings synchronize the GPU and exclude construction/host-to-device transfer.
-- Each GPU path was warmed at 1k–5k; the 10k entries are single synchronized
-  passes after the kernels had already compiled.
+- Each GPU path was warmed at 1k–5k. The final 10k validation additionally ran
+  four 4096² cuBLAS matrix multiplications to raise GPU clocks, synchronized,
+  compiled the same inverse path on a 256² input, synchronized again, and only
+  then started a wall timer around `inverse_new` plus final synchronization.
+  Input construction, host-to-device transfer, context initialization, kernel
+  compilation, GPU priming, and cleanup are outside the reported time.
 - The scale family is an invertible upper-bidiagonal matrix. A dense random
   upper-triangular family with unit diagonal was also measured at 1k to ensure
   the sparse-looking input was not hiding kernel work.
@@ -48,7 +52,7 @@ large-square table.
 | 1,000² | 0.324 s | 0.188 s | 0.199 s |
 | 2,000² | 1.230 s | 1.122 s | 1.112 s |
 | 5,000² | 12.875 s | 12.517 s | 9.890 s |
-| 10,000² | 91.443 s | 91.513 s | not run (CPU cap requested at 5k) |
+| 10,000² | 94.110 s | 96.838 s | not run (CPU cap requested at 5k) |
 
 ### Modulus and matrix-family sensitivity at 1,000²
 
@@ -67,6 +71,11 @@ matmul, permutations, and serialized host-visible pivots. The two GPU methods
 converge at 10k, where dense arithmetic dominates launch and synchronization
 overhead. This result supports keeping both strategies and treating the default
 as an API policy rather than a universal performance theorem.
+
+The explicit priming rerun confirms that the 10k time is computation rather
+than setup. Doubling from 5k to 10k multiplies cubic work by eight; the 5k
+measurements predict roughly 100--103 seconds, close to the observed 94--97
+seconds. The kernels perform dense work even for the upper-bidiagonal input.
 
 The benchmark also caught an autotune bug: a 32×32 Schur launch requested 1024
 threads while the compiled kernel allowed 640 on this GPU. Dispatch now uses the
