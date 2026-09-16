@@ -448,11 +448,20 @@ function pluq_scale_row_rect_aug_from_diag_kernel!(aug, row::Int32, jstart::Int3
     return
 end
 
-function pluq_elim_rect_aug_kernel!(aug, k::Int32, m::Int32, w::Int32, N::Int32)
+"""Capture one stable elimination factor per row before modifying column `k`."""
+function pluq_rect_elim_factors_kernel!(factors, aug, k::Int32, m::Int32, N::Int32)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    if i <= m
+        factors[i] = i == k ? zero(eltype(factors)) : _pluq_mod_t(aug[i, k], N)
+    end
+    return
+end
+
+function pluq_elim_rect_aug_kernel!(aug, factors, k::Int32, m::Int32, w::Int32, N::Int32)
     j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k - 1
     i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
     if i <= m && j <= w && i != k
-        f = _pluq_mod_t(aug[i, k], N)
+        f = factors[i]
         if f != zero(eltype(aug))
             aug[i, j] = _pluq_mod_t(aug[i, j] - _pluq_mod_mul_t(f, aug[k, j], N), N)
         end
@@ -526,6 +535,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     threads = 256
     pivot_slot = CUDA.fill(_to_i32(m * n + 1), 1)
     pivot_host = _pluq_host_i32_buffer()
+    elim_factors = CUDA.zeros(eltype(A.data), m)
     rank = 0
     for k in 1:m
         span_r = m - k + 1
@@ -565,7 +575,8 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
             end
         end
         @cuda threads=threads blocks=max(1, cld(w - k + 1, threads)) pluq_scale_row_rect_aug_from_diag_kernel!(aug, k32, k32, w32, N32)
-        @cuda threads=(tx, ty) blocks=(max(1, cld(w - k + 1, tx)), max(1, cld(m, ty))) pluq_elim_rect_aug_kernel!(aug, k32, m32, w32, N32)
+        @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_rect_elim_factors_kernel!(elim_factors, aug, k32, m32, N32)
+        @cuda threads=(tx, ty) blocks=(max(1, cld(w - k + 1, tx)), max(1, cld(m, ty))) pluq_elim_rect_aug_kernel!(aug, elim_factors, k32, m32, w32, N32)
         rank += 1
     end
     if rank != m

@@ -79,3 +79,19 @@ function test_rectangular_additional_sizes()
         end
     end
 end
+
+# The augmented elimination kernel must read each multiplier before any thread
+# clears the pivot column.  A dense leading block makes that dependency present
+# in every elimination step, unlike identity-leading construction helpers.
+function test_dense_rectangular_right_inverse()
+    rng = Random.MersenneTwister(20260915)
+    m, n, p = 96, 192, 101
+    Ahost = zeros(Float32, m, n)
+    Ahost[:, 1:m] .= Float32.(rand(rng, 0:(p - 1), m, m))
+    for i in 1:m
+        Ahost[i, m + i] = 1f0
+    end
+    A = CuModMatrix(Ahost, p; elem_type=Float32)
+    X = right_inverse_new(A, options=PLUQOptions(autotune=true, check_prime=true))
+    @test mod.(Array(A * X), p) == _extra_id(Int, m)
+end

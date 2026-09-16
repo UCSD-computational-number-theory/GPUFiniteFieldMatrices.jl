@@ -70,6 +70,9 @@ function test_inverse_rewrite()
     @testset "Rectangular Additional Sizes" begin
         test_rectangular_additional_sizes()
     end
+    @testset "Dense Rectangular Right Inverse" begin
+        test_dense_rectangular_right_inverse()
+    end
     @testset "Phase0 Regime Matrix Grid" begin
         test_phase0_regime_matrix_grid()
     end
