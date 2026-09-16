@@ -187,7 +187,9 @@ Returns the maximum number of operations before a N is necessary given a datatyp
 """
 function get_bits(type)
     if occursin("Float", string(type))
-        bits_dict = Dict("64" => 51, "32" => 22, "16" => 9)
+        # Number of integer-significand bits guaranteed by IEEE arithmetic.
+        # Every integer through 2^p is represented exactly by the format.
+        bits_dict = Dict("64" => 53, "32" => 24, "16" => 11)
         bits_match = match(r"\d+", string(type))
         bits = get(bits_dict, bits_match.match, -1)
     elseif occursin("UInt", string(type))
@@ -209,12 +211,9 @@ end
 
 function find_max_ops(type, N)
     bits = get_bits(type)
-
-    if 64 ≤ bits
-        floor(BigInt, (BigInt(2)^bits - 1) / N^2) - 1
-    else
-        floor(Int, (2^bits - 1) / N^2) - 1    
-    end    
+    maxterm = BigInt(max(N - 1, 1))^2
+    value = (BigInt(2)^bits - 1) ÷ maxterm - 1
+    return value > typemax(Int) ? typemax(Int) : max(Int(value), 0)
 end
 
 Base.size(A::CuModArray) = A.size

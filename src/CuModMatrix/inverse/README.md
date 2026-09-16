@@ -50,3 +50,36 @@ precondition on the host before GPU kernels launch. The current CUDA kernels pas
   option does not change these rectangular algorithms.
 - Tiny batched PLUQ and inverse kernels: specialize the ICCS-style workload of
   many small matrices for fixed square sizes 4, 8, 16, and 32.
+
+## Large-Matrix CUDA Optimizations
+
+- A panel is factored by one cooperative CUDA block. Pivot searches, global
+  row and column swaps, multiplier scaling, and rank-one panel updates remain
+  on the device; the host reads one rank value per panel instead of one pivot
+  value per column. The same kernel records permutations and diagonal inverses
+  in device memory.
+- Triangular panel solves delay modular reduction until the end of a dot
+  product whenever the complete integer result fits exactly in the element
+  type. Right solves reuse the diagonal inverses recorded during factorization.
+- Safe Schur complements use cuBLAS GEMM for `A22 -= L21*U12`, followed by one
+  canonical modular reduction per output. The tiled Barrett-reduction kernel
+  remains the fallback when a complete panel dot product is not exactly
+  representable.
+- General modular products split the inner dimension into exact chunks and
+  reduce between chunks. For IEEE floating-point storage the chunk bound uses
+  the full integer significand (24 bits for `Float32`, 53 for `Float64`). This
+  keeps triangular inversion and final inverse composition correct when the
+  matrix dimension exceeds a single exact GEMM.
+- Exact `Float32` paths reject CUDA `FAST_MATH`, because TF32 input truncation
+  does not preserve finite-field representatives. CUDA `DEFAULT_MATH` and
+  `PEDANTIC_MATH` use the required FP32 inputs.
+
+The kernel choices follow the official [CUDA.jl kernel-programming
+guide](https://cuda.juliagpu.org/stable/development/kernel/), its
+[driver/occupancy documentation](https://cuda.juliagpu.org/stable/lib/cudadrv/),
+and NVIDIA's [CUDA C++ Best Practices
+Guide](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/). In
+particular, the implementation uses warp-multiple blocks, coalesced
+column-major traversal where dependencies permit it, shared-memory reduction,
+warp shuffle reduction, fewer host/device synchronization points, and cuBLAS
+for the large matrix products.

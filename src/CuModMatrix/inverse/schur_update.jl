@@ -166,6 +166,24 @@ function pluq_schur_update_gpu!(Adata::CuArray{T,2}, N::Int, k0::Int, kend::Int,
     if kend >= n
         return
     end
+    panel_width = kend - k0 + 1
+    if find_max_ops(T, N) >= panel_width
+        # The operands contain exact, canonical field representatives.  Under
+        # this bound every dot product and subtraction is exactly representable
+        # in T, so cuBLAS can perform the cubic work before one modular
+        # canonicalization per output.  DEFAULT/PEDANTIC CUDA math uses native
+        # FP32/FP64 inputs; FAST_MATH is intentionally rejected because TF32
+        # truncates integer mantissas.
+        if CUDA.math_mode() == CUDA.FAST_MATH && T == Float32
+            throw(ArgumentError("PLUQ exact Schur updates require CUDA DEFAULT_MATH or PEDANTIC_MATH"))
+        end
+        L21 = @view Adata[(kend + 1):n, k0:kend]
+        U12 = @view Adata[k0:kend, (kend + 1):n]
+        A22 = @view Adata[(kend + 1):n, (kend + 1):n]
+        mul!(A22, L21, U12, -one(T), one(T))
+        A22 .= mod.(A22, T(N))
+        return
+    end
     trailing = n - kend
     tile = options.schur_tile
     if trailing <= 64

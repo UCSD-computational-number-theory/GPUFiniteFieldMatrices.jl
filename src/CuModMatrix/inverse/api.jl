@@ -73,7 +73,7 @@ function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
         )
     elseif n <= 1536
         return PLUQOptions(options;
-            blocksize=96,
+            blocksize=32,
             basecase=32,
             nftb=T == Float32 ? 8 : 6,
             trsm_mode=:auto,
@@ -82,9 +82,20 @@ function _pluq_autotune_options(options::PLUQOptions, n::Int, T::DataType)
             autotune=false,
             batch_streams=max(1, options.batch_streams),
         )
+    elseif n <= 3072
+        return PLUQOptions(options;
+            blocksize=32,
+            basecase=32,
+            nftb=T == Float32 ? 8 : 6,
+            trsm_mode=:panel,
+            trsm_warp_threshold=32,
+            schur_tile=16,
+            autotune=false,
+            batch_streams=max(1, options.batch_streams),
+        )
     end
     return PLUQOptions(options;
-        blocksize=128,
+        blocksize=64,
         basecase=32,
         nftb=T == Float32 ? 8 : 6,
         trsm_mode=:panel,

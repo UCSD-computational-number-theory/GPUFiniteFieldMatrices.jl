@@ -254,6 +254,142 @@ function pluq_rank1_update_kernel!(A, k::Int32, kend::Int32, N::Int32)
 end
 
 """
+    pluq_panel_fused_kernel!(A, p, q, rank_slot, k0, kend, n, N)
+
+Factor one diagonal panel in a single cooperative thread block.  Pivot search,
+global row/column swaps, multiplier scaling, and the panel rank-one updates stay
+on the device.  This removes the per-pivot device-to-host synchronization and
+the four kernel launches used by the reference basecase.
+
+`p` and `q` are device-resident gather permutations and are updated at the same
+time as the corresponding matrix swaps.  `rank_slot[1]` is the only value the
+blocked driver must read after the whole panel has completed.
+"""
+function pluq_panel_fused_kernel!(A, p, q, dinv, rank_slot, k0::Int32, kend::Int32, n::Int32, N::Int32)
+    tid = Int32(threadIdx().x)
+    nt = Int32(blockDim().x)
+    candidates = CuStaticSharedArray(Int32, 256)
+    pivot = CuStaticSharedArray(Int32, 2)
+    invpivot = CuStaticSharedArray(eltype(A), 1)
+
+    if tid == Int32(1)
+        rank_slot[1] = Int32(0)
+    end
+    sync_threads()
+
+    k = k0
+    while k <= kend
+        span = kend - k + Int32(1)
+        total = span * span
+        local_min = total + Int32(1)
+        idx = tid
+        while idx <= total
+            joff = (idx - Int32(1)) ÷ span
+            ioff = (idx - Int32(1)) % span
+            if _pluq_mod_t(A[k + ioff, k + joff], N) != zero(eltype(A))
+                local_min = min(local_min, idx)
+            end
+            idx += nt
+        end
+        candidates[Int(tid)] = local_min
+        sync_threads()
+
+        step = nt >>> 1
+        while step >= Int32(1)
+            if tid <= step
+                candidates[Int(tid)] = min(candidates[Int(tid)], candidates[Int(tid + step)])
+            end
+            sync_threads()
+            step >>>= 1
+        end
+        if tid == Int32(1)
+            pos = candidates[1]
+            if pos <= total
+                pivot[1] = k + (pos - Int32(1)) % span
+                pivot[2] = k + (pos - Int32(1)) ÷ span
+                rank_slot[1] += Int32(1)
+            else
+                pivot[1] = Int32(0)
+                pivot[2] = Int32(0)
+            end
+        end
+        sync_threads()
+        if pivot[1] == Int32(0)
+            return
+        end
+
+        prow = pivot[1]
+        pcol = pivot[2]
+        if prow != k
+            col = tid
+            while col <= n
+                tmp = A[k, col]
+                A[k, col] = A[prow, col]
+                A[prow, col] = tmp
+                col += nt
+            end
+            if tid == Int32(1)
+                tmp = p[k]
+                p[k] = p[prow]
+                p[prow] = tmp
+            end
+        end
+        sync_threads()
+
+        if pcol != k
+            row = tid
+            while row <= n
+                tmp = A[row, k]
+                A[row, k] = A[row, pcol]
+                A[row, pcol] = tmp
+                row += nt
+            end
+            if tid == Int32(1)
+                tmp = q[k]
+                q[k] = q[pcol]
+                q[pcol] = tmp
+            end
+        end
+        sync_threads()
+
+        if tid == Int32(1)
+            invpivot[1] = _pluq_mod_inv_t(A[k, k], N)
+            dinv[k] = invpivot[1]
+        end
+        sync_threads()
+        row = k + tid
+        while row <= kend
+            A[row, k] = _pluq_mod_mul_t(A[row, k], invpivot[1], N)
+            row += nt
+        end
+        sync_threads()
+
+        width = kend - k
+        idx = tid
+        while idx <= width * width
+            joff = (idx - Int32(1)) ÷ width + Int32(1)
+            ioff = (idx - Int32(1)) % width + Int32(1)
+            row = k + ioff
+            col = k + joff
+            product = _pluq_mod_mul_t(A[row, k], A[k, col], N)
+            A[row, col] = _pluq_mod_t(A[row, col] - product, N)
+            idx += nt
+        end
+        sync_threads()
+        k += Int32(1)
+    end
+    return
+end
+
+function pluq_panel_fused_gpu!(Adata::CuArray{T,2}, N::Int, pdev, qdev, dinv,
+                               rank_slot, rank_host, k0::Int, kend::Int,
+                               n::Int) where {T}
+    @cuda threads=256 blocks=1 pluq_panel_fused_kernel!(
+        Adata, pdev, qdev, dinv, rank_slot, Int32(k0), Int32(kend), Int32(n), Int32(N))
+    return _pluq_read_i32!(rank_host, rank_slot)
+end
+
+"""
     pluq_basecase_gpu!(Adata, N, p, q, k0, kend, n)
 
 Perform in-place PLUQ elimination on a block `[k0:kend, k0:kend]` of `Adata`
