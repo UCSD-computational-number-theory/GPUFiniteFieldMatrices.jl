@@ -57,4 +57,13 @@ function test_rectangular_rank_and_failures()
     Ftall = pluq_new(Atall)
     @test Ftall.rank == 1
     @test_throws GPUFiniteFieldMatrices.InverseNotDefinedException left_inverse_new(Atall)
+
+    # A full-row-rank matrix may have an all-zero leading column.  The blocked
+    # device panel stops there and `pluq_new` must restart from its saved input
+    # with complete pivoting rather than treating the matrix as rank-deficient.
+    Ashuffled = CuModMatrix([0 1 0 2; 0 0 1 3], p)
+    Fshuffled = pluq_new(Ashuffled)
+    @test Fshuffled.rank == 2
+    Xshuffled = right_inverse_new(Ashuffled)
+    @test mod.(Array(Ashuffled * Xshuffled), p) == _rect_id(eltype(Ashuffled.data), 2)
 end

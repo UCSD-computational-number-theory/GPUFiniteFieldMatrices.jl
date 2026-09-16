@@ -5,8 +5,8 @@ Extract explicit lower-triangular factor from packed `LU` into `L`.
 Diagonal entries are set to one.
 """
 function pluq_extract_l_kernel!(L, LU, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= n
         if i == j
             L[i, j] = one(eltype(L))
@@ -25,8 +25,8 @@ end
 Extract explicit upper-triangular factor from packed `LU` into `U`.
 """
 function pluq_extract_u_kernel!(U, LU, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= n
         if i <= j
             U[i, j] = LU[i, j]
@@ -44,8 +44,8 @@ Apply permutations in gather form:
 `PAQ[i,j] = A[p[i], q[j]]`.
 """
 function pluq_apply_paq_kernel!(PAQ, A, p, q, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= n
         PAQ[i, j] = A[p[i], q[j]]
     end

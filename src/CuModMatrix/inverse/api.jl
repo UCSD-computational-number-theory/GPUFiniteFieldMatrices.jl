@@ -127,7 +127,21 @@ function pluq_new!(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     p, q, rank = if m == n
         pluq_blocked_gpu!(A.data, A.N, opts, n)
     else
-        pluq_rectangular_rank_gpu!(A.data, A.N, m, n, options=opts)
+        # Normal dense panels complete entirely on device.  Retain an exact
+        # copy only to recover the rare zero-column event with the established
+        # complete-pivot reference factorization.
+        original = copy(A.data)
+        bp, bq, brank = pluq_rectangular_rank_gpu!(A.data, A.N, m, n, options=opts)
+        if brank == min(m, n)
+            bp, bq, brank
+        else
+            # The failed panel has queued writes on the default stream. Make
+            # the restore explicit before the exceptional reference fallback.
+            CUDA.synchronize()
+            copyto!(A.data, original)
+            CUDA.synchronize()
+            pluq_rectangular_rank_reference_gpu!(A.data, A.N, m, n, options=opts)
+        end
     end
     return PLUQFactorization(A, p, q, rank)
 end
@@ -168,8 +182,8 @@ Initialize augmented matrix `[A | I]` in `aug` for Gauss-Jordan inversion.
 Internal kernel used by `inverse_new`.
 """
 function pluq_init_aug_kernel!(aug, Adata, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= 2n
         if j <= n
             aug[i, j] = Adata[i, j]
@@ -287,8 +301,8 @@ Eliminate column `k` from all rows except the pivot row in augmented matrix.
 Internal kernel used by `inverse_new`.
 """
 function pluq_aug_elim_kernel!(aug, k::Int32, n::Int32, n2::Int32, N::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k - 1
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y + k - Int32(1)
     if i <= n && j <= n2 && i != k
         f = _pluq_mod_t(aug[i, k], N)
         if f != zero(eltype(aug))
@@ -305,8 +319,8 @@ Copy the top-left `n x n` block from `src` to `dest`.
 Internal utility used by `inverse_new`.
 """
 function pluq_copy_block_kernel!(dest, src, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= n
         dest[i, j] = src[i, j]
     end
@@ -339,8 +353,8 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     aug = CUDA.zeros(eltype(A.data), size(A.data, 1), size(A.data, 2) + n + TILE_WIDTH)
     tx = 16
     ty = 16
-    bx = max(1, cld(n2, tx))
-    by = max(1, cld(n, ty))
+    bx = max(1, cld(n, tx))
+    by = max(1, cld(n2, ty))
     n32 = _to_i32(n)
     n232 = _to_i32(n2)
     N32 = _to_i32(N)
@@ -368,8 +382,8 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
             @cuda threads=threads blocks=max(1, cld(n2, threads)) pluq_swap_rows_kernel!(aug, k32, _to_i32(prow), n232)
         end
         @cuda threads=threads blocks=max(1, cld(n2 - k + 1, threads)) pluq_aug_scale_row_from_diag_kernel!(aug, k32, k32, n232, N32)
-        bx2 = max(1, cld(n2 - k + 1, tx))
-        by2 = max(1, cld(n, ty))
+        bx2 = max(1, cld(n, tx))
+        by2 = max(1, cld(n2 - k + 1, ty))
         @cuda threads=(tx, ty) blocks=(bx2, by2) pluq_aug_elim_kernel!(aug, k32, n32, n232, N32)
     end
     invdata = @view aug[1:n, (n + 1):n2]
@@ -420,8 +434,8 @@ function inverse_pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
 end
 
 function pluq_init_rect_aug_kernel!(aug, Adata, m::Int32, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= m && j <= (n + m)
         if j <= n
             aug[i, j] = Adata[i, j]
@@ -458,8 +472,8 @@ function pluq_rect_elim_factors_kernel!(factors, aug, k::Int32, m::Int32, N::Int
 end
 
 function pluq_elim_rect_aug_kernel!(aug, factors, k::Int32, m::Int32, w::Int32, N::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k - 1
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y + k - Int32(1)
     if i <= m && j <= w && i != k
         f = factors[i]
         if f != zero(eltype(aug))
@@ -470,8 +484,8 @@ function pluq_elim_rect_aug_kernel!(aug, factors, k::Int32, m::Int32, w::Int32, 
 end
 
 function pluq_load_z_kernel!(Z, Y, m::Int32, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= m
         if i <= m
             Z[i, j] = Y[i, j]
@@ -483,8 +497,8 @@ function pluq_load_z_kernel!(Z, Y, m::Int32, n::Int32)
 end
 
 function pluq_scatter_solution_kernel!(X, Z, qdev, n::Int32, m::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= n && j <= m
         dst = qdev[i]
         X[dst, j] = Z[i, j]
@@ -494,10 +508,30 @@ end
 
 """Copy the logical `m × n` leading block of `src` into `dest` on device."""
 function pluq_copy_rect_block_kernel!(dest, src, m::Int32, n::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
     if i <= m && j <= n
         dest[i, j] = src[i, j]
+    end
+    return
+end
+
+"""Gather `m` selected columns into a square matrix, with row-contiguous lanes."""
+function pluq_gather_selected_columns_kernel!(dest, src, qdev, m::Int32)
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
+    if i <= m && j <= m
+        dest[i, j] = src[i, qdev[j]]
+    end
+    return
+end
+
+"""Scatter the rows of a selected square inverse into a wide right inverse."""
+function pluq_scatter_selected_inverse_kernel!(dest, src, qdev, m::Int32)
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y
+    if i <= m && j <= m
+        dest[qdev[i], j] = src[i, j]
     end
     return
 end
@@ -529,6 +563,29 @@ function _right_inverse_leading_block(A::CuModMatrix, opts::PLUQOptions)
     end
     X = GPUFiniteFieldMatrices.zeros(T, n, m, A.N)
     @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_copy_rect_block_kernel!(X.data, Binv.data, Int32(m), Int32(m))
+    return X
+end
+
+"""Construct a right inverse from the independent columns selected by PLUQ."""
+function _right_inverse_selected_columns(A::CuModMatrix, opts::PLUQOptions)
+    m = rows(A)
+    n = cols(A)
+    F = pluq_new(A, options=opts)
+    F.rank == m || return nothing
+    qdev = CuArray(Int32.(F.q[1:m]))
+    T = eltype(A.data)
+    B = GPUFiniteFieldMatrices.zeros(T, m, m, A.N)
+    tx = 16
+    ty = 16
+    @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_gather_selected_columns_kernel!(B.data, A.data, qdev, Int32(m))
+    Binv = try
+        inverse_pluq_new(B, options=PLUQOptions(opts; inverse_strategy=:pluq))
+    catch err
+        err isa InverseNotDefinedException || rethrow()
+        return nothing
+    end
+    X = GPUFiniteFieldMatrices.zeros(T, n, m, A.N)
+    @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_scatter_selected_inverse_kernel!(X.data, Binv.data, qdev, Int32(m))
     return X
 end
 
@@ -568,6 +625,8 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     if m < n
         fast = _right_inverse_leading_block(A, opts)
         fast === nothing || return fast
+        selected = _right_inverse_selected_columns(A, opts)
+        selected === nothing || return selected
     end
     N = A.N
     w = n + m
@@ -578,7 +637,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     n32 = _to_i32(n)
     w32 = _to_i32(w)
     N32 = _to_i32(N)
-    @cuda threads=(tx, ty) blocks=(max(1, cld(w, tx)), max(1, cld(m, ty))) pluq_init_rect_aug_kernel!(aug, A.data, m32, n32)
+    @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(w, ty))) pluq_init_rect_aug_kernel!(aug, A.data, m32, n32)
     q = collect(1:n)
     lq = opts.lazy_q ? collect(1:n) : Int[]
     threads = 256
@@ -625,7 +684,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         end
         @cuda threads=threads blocks=max(1, cld(w - k + 1, threads)) pluq_scale_row_rect_aug_from_diag_kernel!(aug, k32, k32, w32, N32)
         @cuda threads=threads blocks=max(1, cld(m, threads)) pluq_rect_elim_factors_kernel!(elim_factors, aug, k32, m32, N32)
-        @cuda threads=(tx, ty) blocks=(max(1, cld(w - k + 1, tx)), max(1, cld(m, ty))) pluq_elim_rect_aug_kernel!(aug, elim_factors, k32, m32, w32, N32)
+        @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(w - k + 1, ty))) pluq_elim_rect_aug_kernel!(aug, elim_factors, k32, m32, w32, N32)
         rank += 1
     end
     if rank != m

@@ -243,8 +243,8 @@ end
 Apply one elimination update step to the trailing active block.
 """
 function pluq_rank1_update_kernel!(A, k::Int32, kend::Int32, N::Int32)
-    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x + k
-    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y + k
+    i = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x + k
+    j = (blockIdx().y - Int32(1)) * blockDim().y + threadIdx().y + k
     if i <= kend && j <= kend
         aik = A[i, k]
         akj = A[k, j]
