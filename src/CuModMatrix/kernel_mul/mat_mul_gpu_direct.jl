@@ -1,5 +1,37 @@
 
 
+"""Multiply GPU matrices modulo `N`, reducing between exactly representable GEMM chunks."""
+function _exact_mod_matmul_data(A, B, N::Integer)
+    size(A, 2) == size(B, 1) || throw(DimensionMismatch("matrix product dimensions do not match"))
+    T = eltype(A)
+    T == eltype(B) || throw(ArgumentError("matrix product element types do not match"))
+    CUDA.math_mode() == CUDA.FAST_MATH && T == Float32 &&
+        throw(ArgumentError("exact modular GEMM requires CUDA DEFAULT_MATH or PEDANTIC_MATH"))
+    chunk = find_max_ops(T, N)
+    chunk >= 1 || throw(InverseOverflowError("modulus $N is too large for exact multiplication with $T"))
+    m, k = size(A)
+    n = size(B, 2)
+    C = CUDA.zeros(T, m, n)
+    tmp = k > chunk ? similar(C) : C
+    first_chunk = true
+    lo = 1
+    while lo <= k
+        hi = min(k, lo + chunk - 1)
+        Av = @view A[:, lo:hi]
+        Bv = @view B[lo:hi, :]
+        if first_chunk
+            mul!(C, Av, Bv)
+            C .= mod.(C, T(N))
+            first_chunk = false
+        else
+            mul!(tmp, Av, Bv)
+            C .= mod.(C .+ tmp, T(N))
+        end
+        lo = hi + 1
+    end
+    return C
+end
+
 """
     mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, [mod_N])
 
@@ -16,28 +48,7 @@ function mat_mul_gpu_type(A::CuModMatrix, B::CuModMatrix, mod_N::Integer=-1; REG
         ))
     end
     
-    type = eltype(A.data)
-    MAX_OPS = find_max_ops(type, N)
-    
-    if REGIME == "⊠"
-        if MAX_OPS >= cols(A) # equal to B_rows
-            REGIME = "⊡"
-        elseif MAX_OPS > TILE_WIDTH
-            REGIME = "⊟"
-        else
-            REGIME = "⊞"
-        end
-    end
-    
-    d_C = CUDA.CuArray{type}(undef, (size(A.data, 1), size(B.data, 2)))
-    
-    REGIME = "⊡"
-    if REGIME == "⊡"
-        mul!(d_C, A.data, B.data)
-        d_C .%= N
-    else
-        error("Invalid regime: $REGIME")
-    end
+    d_C = _exact_mod_matmul_data(A.data, B.data, N)
     return CuModMatrix(d_C, N, new_size=(rows(A), cols(B)))
 end
 
@@ -64,22 +75,6 @@ function mat_mul_type_inplace!(C::CuModMatrix, A::CuModMatrix, B::CuModMatrix, m
         ))
     end
     
-    type = eltype(A.data)
-    MAX_OPS = find_max_ops(type, N)
-    println("MAX_OPS: $MAX_OPS")
-    
-    if MAX_OPS >= cols(A) # equal to rows(B)
-        REGIME = "⊡"
-    else
-        REGIME = "⊞"
-    end
-    
-    REGIME = "⊡"
-    if REGIME == "⊡"
-        LinearAlgebra.mul!(C.data,A.data,B.data)
-        C.data .%= N
-    else
-        error("Matrix multiplication of ($(rows(A)),$(cols(A))) x ($(rows(B)),$(cols(B))) not justified modulo $N for data type $type")
-    end
+    copyto!(C.data, _exact_mod_matmul_data(A.data, B.data, N))
     return C
 end 

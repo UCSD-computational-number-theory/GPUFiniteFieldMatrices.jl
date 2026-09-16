@@ -39,7 +39,8 @@ function _recursive_upper_triangular_inverse_no_copy(
             display(@view A[row_lower:row_upper, col_lower:col_upper])
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_all_inv, N, row_lower-1, col_lower-1)
+        n_active = min(TILE_WIDTH, row_upper - row_lower + 1, col_upper - col_lower + 1)
+        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_all_inv, N, row_lower-1, col_lower-1, n_active)
 
         if debug
             println("A_all_inv:")
@@ -95,7 +96,8 @@ function _recursive_upper_triangular_inverse_no_copy(
             @assert (col_mid - col_lower + 1) == size(A_11_inv, 2)
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_11_inv, N, row_lower-1, col_lower-1)
+        n11 = min(TILE_WIDTH, row_mid - row_lower + 1, col_mid - col_lower + 1)
+        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_11_inv, N, row_lower-1, col_lower-1, n11)
 
         if debug
             println("A_11_inv:")
@@ -123,7 +125,8 @@ function _recursive_upper_triangular_inverse_no_copy(
             display(@view A[row_mid+1:row_mid+TILE_WIDTH, col_mid+1:col_mid+TILE_WIDTH])
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_22_inv, N, row_mid, col_mid)
+        n22 = min(TILE_WIDTH, row_upper - row_mid, col_upper - col_mid)
+        @cuda threads=TILE_WIDTH blocks=1 backward_sub_kernel_32(A, A_22_inv, N, row_mid, col_mid, n22)
 
         if debug
             println("A_22_inv:")
@@ -150,9 +153,8 @@ function _recursive_upper_triangular_inverse_no_copy(
             display(A_12)
         end
 
-        tmp = A_11_inv * A_12
-        mod!(tmp, tmp, N)
-        tmp2 = tmp * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)]
+        tmp = _exact_mod_matmul_data(A_11_inv, A_12, N)
+        tmp2 = _exact_mod_matmul_data(tmp, A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)], N)
         rscalar_sub!(tmp2, tmp2, N, N)
         A_inv[col_lower:col_mid, row_mid+1:row_upper] = tmp2
 
@@ -179,9 +181,8 @@ function _recursive_upper_triangular_inverse_no_copy(
         A_12 = @view A[row_lower:row_mid, col_mid+1:col_upper]
         A_11_inv = @view A_inv[col_lower:col_mid, row_lower:row_mid]
         A_22_inv = @view A_inv[col_mid+1:col_upper, row_mid+1:row_upper]
-        tmp = A_11_inv * A_12
-        mod!(tmp, tmp, N)
-        tmp2 = tmp * A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)]
+        tmp = _exact_mod_matmul_data(A_11_inv, A_12, N)
+        tmp2 = _exact_mod_matmul_data(tmp, A_22_inv[1:(col_upper - col_mid), 1:(row_upper - row_mid)], N)
         rscalar_sub!(tmp2, tmp2, N, N)
         A_inv[col_lower:col_mid, row_mid+1:row_upper] = tmp2
 
@@ -268,7 +269,8 @@ function _recursive_lower_triangular_inverse_no_copy(
             display(@view A[col_lower:col_upper, row_lower:row_upper])
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_all_inv, N, row_lower-1, col_lower-1)
+        n_active = min(TILE_WIDTH, row_upper - row_lower + 1, col_upper - col_lower + 1)
+        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_all_inv, N, row_lower-1, col_lower-1, n_active)
 
         if debug
             println("A_all_inv:")
@@ -347,7 +349,8 @@ function _recursive_lower_triangular_inverse_no_copy(
             @assert (col_mid - col_lower + 1) == size(A_11_inv, 2)
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_11_inv, N, row_lower-1, col_lower-1)
+        n11 = min(TILE_WIDTH, row_mid - row_lower + 1, col_mid - col_lower + 1)
+        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_11_inv, N, row_lower-1, col_lower-1, n11)
 
         if debug
             println("A_11_inv:")
@@ -375,7 +378,8 @@ function _recursive_lower_triangular_inverse_no_copy(
             display(@view A[row_mid+1:row_mid+TILE_WIDTH, col_mid+1:col_mid+TILE_WIDTH])
         end
 
-        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_22_inv, N, row_mid, col_mid)
+        n22 = min(TILE_WIDTH, row_upper - row_mid, col_upper - col_mid)
+        @cuda threads=TILE_WIDTH blocks=1 forward_sub_kernel_32(A, A_22_inv, N, row_mid, col_mid, n22)
 
         if debug
             println("A_22_inv:")
@@ -403,9 +407,8 @@ function _recursive_lower_triangular_inverse_no_copy(
             display(A_21)
         end
 
-        tmp = A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)] * A_21
-        mod!(tmp, tmp, N)
-        tmp2 = tmp * A_11_inv
+        tmp = _exact_mod_matmul_data(A_22_inv[1:(row_upper - row_mid), 1:(col_upper - col_mid)], A_21, N)
+        tmp2 = _exact_mod_matmul_data(tmp, A_11_inv, N)
         rscalar_sub!(tmp2, tmp2, N, N)
         A_inv[col_mid+1:col_upper, row_lower:row_mid] = tmp2
 
@@ -432,9 +435,8 @@ function _recursive_lower_triangular_inverse_no_copy(
         A_21 = @view A[row_mid+1:row_upper, col_lower:col_mid]
         A_11_inv = @view A_inv[col_lower:col_mid, row_lower:row_mid]
         A_22_inv = @view A_inv[col_mid+1:col_upper, row_mid+1:row_upper]
-        tmp = A_22_inv * A_21
-        mod!(tmp, tmp, N)
-        tmp2 = tmp * A_11_inv
+        tmp = _exact_mod_matmul_data(A_22_inv, A_21, N)
+        tmp2 = _exact_mod_matmul_data(tmp, A_11_inv, N)
         rscalar_sub!(tmp2, tmp2, N, N)
         A_inv[col_mid+1:col_upper, row_lower:row_mid] = tmp2
 
