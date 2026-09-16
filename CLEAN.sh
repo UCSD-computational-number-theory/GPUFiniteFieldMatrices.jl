@@ -8,8 +8,6 @@ cd -- "$(dirname -- "$0")"
 rm -f -- \
   PR.md \
   plan.md \
-  pr-20-comments.json \
-  src/CuModMatrix/inverse/HPDC.pdf \
-  src/CuModMatrix/inverse/ICCS.pdf
+  pr-20-comments.json
 
-printf '%s\n' 'Removed local review plans, downloaded comments, and paper copies.'
+printf '%s\n' 'Removed local review plans and downloaded comments.'
