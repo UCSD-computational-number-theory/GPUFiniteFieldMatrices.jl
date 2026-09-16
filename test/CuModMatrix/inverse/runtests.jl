@@ -73,6 +73,9 @@ function test_inverse_rewrite()
     @testset "Dense Rectangular Right Inverse" begin
         test_dense_rectangular_right_inverse()
     end
+    @testset "Right Inverse Leading-Block Fallback" begin
+        test_right_inverse_singular_leading_block_fallback()
+    end
     @testset "Phase0 Regime Matrix Grid" begin
         test_phase0_regime_matrix_grid()
     end

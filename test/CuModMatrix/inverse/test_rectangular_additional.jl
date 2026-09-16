@@ -95,3 +95,11 @@ function test_dense_rectangular_right_inverse()
     X = right_inverse_new(A, options=PLUQOptions(autotune=true, check_prime=true))
     @test mod.(Array(A * X), p) == _extra_id(Int, m)
 end
+
+function test_right_inverse_singular_leading_block_fallback()
+    p = 101
+    # The leading 2×2 block is singular, but columns 2 and 3 form I₂.
+    A = CuModMatrix(Float32[0 1 0; 0 0 1], p; elem_type=Float32)
+    X = right_inverse_new(A, options=PLUQOptions(autotune=true, check_prime=true))
+    @test mod.(Array(A * X), p) == _extra_id(Int, 2)
+end

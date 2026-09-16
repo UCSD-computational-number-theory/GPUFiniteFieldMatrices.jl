@@ -492,16 +492,58 @@ function pluq_scatter_solution_kernel!(X, Z, qdev, n::Int32, m::Int32)
     return
 end
 
+"""Copy the logical `m × n` leading block of `src` into `dest` on device."""
+function pluq_copy_rect_block_kernel!(dest, src, m::Int32, n::Int32)
+    j = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    i = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+    if i <= m && j <= n
+        dest[i, j] = src[i, j]
+    end
+    return
+end
+
+"""
+    _right_inverse_leading_block(A, opts)
+
+Try the inexpensive right inverse induced by the leading square block of a
+wide matrix.  When that block is nonsingular, `[B⁻¹; 0]` is a right inverse of
+`A = [B C]`.  Return `nothing` if the block is singular so the rank-revealing
+general path can select columns elsewhere in `A`.
+"""
+function _right_inverse_leading_block(A::CuModMatrix, opts::PLUQOptions)
+    m = rows(A)
+    n = cols(A)
+    m == n && return nothing
+    T = eltype(A.data)
+    B = GPUFiniteFieldMatrices.zeros(T, m, m, A.N)
+    tx = 16
+    ty = 16
+    @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_copy_rect_block_kernel!(B.data, A.data, Int32(m), Int32(m))
+    Binv = try
+        inverse_pluq_new(B, options=PLUQOptions(opts; inverse_strategy=:pluq))
+    catch err
+        if err isa InverseNotDefinedException
+            return nothing
+        end
+        rethrow()
+    end
+    X = GPUFiniteFieldMatrices.zeros(T, n, m, A.N)
+    @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_copy_rect_block_kernel!(X.data, Binv.data, Int32(m), Int32(m))
+    return X
+end
+
 """
     right_inverse_new(A; options=PLUQOptions())
 
 Compute a right inverse `X` such that `A*X = I` for full row-rank rectangular
 `A` with `rows(A) <= cols(A)` over `GF(N)`.
 
-This uses Gauss-Jordan elimination on `[A | I_m]` with row and column pivoting.
-If rank is smaller than `m`, no right inverse exists and an exception is thrown.
-`inverse_strategy` only controls square `inverse_new`; this rectangular path is
-always augmented rank-revealing elimination.
+When the leading `m × m` block is nonsingular, this uses the blocked PLUQ
+inverse of that block and returns `[B⁻¹; 0]`.  Otherwise it falls back to
+Gauss-Jordan elimination on `[A | I_m]` with row and column pivoting. If rank
+is smaller than `m`, no right inverse exists and an exception is thrown.
+`inverse_strategy` controls the square fast path; the fallback is augmented
+rank-revealing elimination.
 
 `A.N` must be prime. Pass `check_prime=true` in `PLUQOptions` to validate this
 precondition on the host before launching GPU kernels.
@@ -519,6 +561,13 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     n = cols(A)
     if m > n
         throw(CuModArraySizeMismatchException("right inverse requires rows(A) <= cols(A)"))
+    end
+    # A dense random wide matrix almost always has a nonsingular leading
+    # square block.  Use the blocked PLUQ inverse in that case; the augmented
+    # fallback below remains necessary for arbitrary full-row-rank matrices.
+    if m < n
+        fast = _right_inverse_leading_block(A, opts)
+        fast === nothing || return fast
     end
     N = A.N
     w = n + m

@@ -18,8 +18,9 @@ Fields:
   `:barrett`); currently retained for API compatibility while kernels select a
   safe backend from the modulus.
 - `inverse_strategy`: square inverse algorithm (`:pluq` default, `:augmented`
-  reference path). Rectangular one-sided inverses use augmented rank-revealing
-  elimination regardless of this option.
+  reference path). A wide right inverse first tries the leading square block
+  through the PLUQ path, then falls back to augmented rank-revealing
+  elimination if that block is singular.
 - `autotune`: choose size-dependent PLUQ parameters at the API boundary.
 - `batch_streams`: number of CUDA streams used by non-tiny batch fallbacks.
 - `check_prime`: validate the finite-field precondition on entry.
