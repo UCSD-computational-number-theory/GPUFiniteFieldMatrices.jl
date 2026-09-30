@@ -164,7 +164,7 @@ function pluq_rectangular_rank_reference_gpu!(Adata::CuArray{T,2}, N::Int, m::In
         span_r = m - k + 1
         span_c = n - k + 1
         total = span_r * span_c
-        CUDA.fill!(pivot_slot, Int32(total + 1))
+        fill!(pivot_slot, Int32(total + 1))
         blocks = max(1, cld(total, threads))
         k32 = Int32(k)
         if span_r <= 32

@@ -7,7 +7,6 @@ using IterTools: IterTools
 using BenchmarkTools: BenchmarkTools
 using CSV: CSV
 using DelimitedFiles: DelimitedFiles
-using Unroll: Unroll, @unroll
 
 const DEBUG = false
 
