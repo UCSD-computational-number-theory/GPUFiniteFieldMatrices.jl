@@ -8,9 +8,7 @@ using Aqua
 using GPUFiniteFieldMatrices
 
 # Aqua quality gate — CPU-runnable, so it runs unconditionally (outside the
-# CUDA.functional() guard below). Limited form matching test/Quality/aqua.jl:
-# stale_deps / deps_compat stay off here; the FULL Aqua step (those two enabled)
-# lives in bead gfm-kvf.4.1.1 after the compat work lands.
+# CUDA.functional() guard below). Limited
 @testset "Aqua" begin
     Aqua.test_all(GPUFiniteFieldMatrices; stale_deps=false, deps_compat=false)
 end
