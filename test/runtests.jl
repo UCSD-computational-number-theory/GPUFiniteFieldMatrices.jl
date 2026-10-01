@@ -4,8 +4,15 @@ using LinearAlgebra
 using BenchmarkTools
 using Suppressor
 using Unroll
+using Aqua
 using ExplicitImports
 using GPUFiniteFieldMatrices
+
+# Aqua quality gate — CPU-runnable, so it runs unconditionally (outside the
+# CUDA.functional() guard below).
+@testset "Aqua" begin
+    Aqua.test_all(GPUFiniteFieldMatrices; stale_deps=false, deps_compat=false)
+end
 
 include("CuModMatrix/basic_operations_test.jl")
 include("CuModMatrix/inplace_operations_test.jl")
