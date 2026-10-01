@@ -65,6 +65,18 @@ function test_matmul_operations()
     println(B_data)
     println(expected_C_mod)
     @test Array(C_mod) ≈ expected_C_mod
+
+    # Force the exact modular GEMM to split its inner dimension.  A single
+    # Float32 dot product of this length can exceed the exactly represented
+    # integer range even though each field representative is exact.
+    k = GPUFiniteFieldMatrices.find_max_ops(Float32, 101) + 17
+    A_chunk_host = reshape(Float32.(mod.(17 .* (1:(2k)), 101)), 2, k)
+    B_chunk_host = reshape(Float32.(mod.(29 .* (1:(2k)), 101)), k, 2)
+    A_chunk = CuModMatrix(A_chunk_host, 101; elem_type=Float32)
+    B_chunk = CuModMatrix(B_chunk_host, 101; elem_type=Float32)
+    C_chunk = mat_mul_gpu_type(A_chunk, B_chunk)
+    expected_chunk = mod.(Int64.(A_chunk_host) * Int64.(B_chunk_host), 101)
+    @test round.(Int64, Array(C_chunk)) == expected_chunk
     
     println("All matrix multiplication operations tests passed!")
 end
