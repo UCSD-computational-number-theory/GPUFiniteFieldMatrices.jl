@@ -19,9 +19,6 @@ include("CuModMatrix/permutation_test.jl")
 include("CuModMatrix/triangular_test.jl")
 include("CuModMatrix/inverse/runtests.jl")
 
-# ExplicitImports is a CPU-runnable quality gate: it runs UNCONDITIONALLY,
-# outside the `CUDA.functional()` guard below, so the GPU-less CI is not vacuous.
-# Each granular check returns `nothing` on success and throws otherwise.
 @testset "ExplicitImports" begin
     @test check_no_implicit_imports(GPUFiniteFieldMatrices) === nothing
     @test check_no_stale_explicit_imports(GPUFiniteFieldMatrices) === nothing
