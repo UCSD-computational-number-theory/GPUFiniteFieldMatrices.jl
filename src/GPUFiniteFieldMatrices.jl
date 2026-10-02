@@ -8,7 +8,12 @@ using BenchmarkTools: BenchmarkTools
 using CSV: CSV
 using DelimitedFiles: DelimitedFiles
 
+# This check keeps return types predictable so the functions below stay fast.
+using DispatchDoctor: @stable
+
 const DEBUG = false
+
+@stable default_mode = "disable" begin
 
 include("CuModMatrix/CuModMatrix.jl")
 
@@ -40,6 +45,8 @@ include("CuModMatrix/inverse/extract.jl")
 include("CuModMatrix/inverse/validation.jl")
 include("CuModMatrix/inverse/api.jl")
 include("CuModMatrix/inverse/batched_tiny.jl")
+
+end # @stable default_mode = "disable"
 
 # Export the main type and its operations
 export CuModArray, CuModMatrix, CuModVector

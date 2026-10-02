@@ -1,3 +1,16 @@
+# Flip the package's `@stable` wrap (src/GPUFiniteFieldMatrices.jl) from its
+# downstream-safe `disable` default to an enforcing mode for the test run only.
+# This MUST run before `using GPUFiniteFieldMatrices` so the package compiles in
+# with the gate active. `codegen_level="min"` keeps the `@stable` precompile
+# overhead low.
+using Preferences: set_preferences!
+set_preferences!(
+    "GPUFiniteFieldMatrices",
+    "dispatch_doctor_mode" => "error",
+    "dispatch_doctor_codegen_level" => "min";
+    force = true,
+)
+
 using Test
 using CUDA
 using LinearAlgebra
@@ -7,6 +20,13 @@ using Unroll
 using Aqua
 using ExplicitImports
 using GPUFiniteFieldMatrices
+
+# Exercise the return type check on CPU, even when CUDA is unavailable.
+@testset "DispatchDoctor — return type stability" begin
+    @test mod_inv(3, 7) == 5
+    @test GPUFiniteFieldMatrices.inverse_permutation([2, 3, 1]) == [3, 1, 2]
+    @test GPUFiniteFieldMatrices.gcd(12, 18) == 6
+end
 
 # Aqua quality gate — CPU-runnable, so it runs unconditionally (outside the
 # CUDA.functional() guard below).
