@@ -31,15 +31,15 @@ function pluq_check_identity(F::PLUQFactorization, Aorig::CuModMatrix)
     N = Aorig.N
     pdev = CuArray(Int32.(F.p))
     qdev = CuArray(Int32.(F.q))
-    PAQ = GPUFiniteFieldMatrices.zeros(eltype(Aorig.data), n, n, N)
+    PAQ = zeros(eltype(Aorig.data), n, n, N)
     tx = 16
     ty = 16
     @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_apply_paq_kernel!(PAQ.data, Aorig.data, pdev, qdev, Int32(n))
     L = pluq_extract_L(F)
     U = pluq_extract_U(F)
-    LU = GPUFiniteFieldMatrices.zeros(eltype(Aorig.data), n, n, N)
+    LU = zeros(eltype(Aorig.data), n, n, N)
     mul!(LU, L, U)
-    D = GPUFiniteFieldMatrices.zeros(eltype(Aorig.data), n, n, N)
+    D = zeros(eltype(Aorig.data), n, n, N)
     sub!(D, PAQ, LU)
     flag = CUDA.zeros(Int32, 1)
     threads = 256

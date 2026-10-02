@@ -364,7 +364,7 @@ function inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     pivot_host = _pluq_host_i32_buffer()
     for k in 1:n
         k32 = _to_i32(k)
-        CUDA.fill!(pivot_slot, _to_i32(n + 1))
+        fill!(pivot_slot, _to_i32(n + 1))
         if n - k + 1 <= 32
             if opts.pivot_warp_kernel == :shfl
                 @cuda threads=32 blocks=1 pluq_aug_find_pivot_warp_shfl_kernel!(aug, pivot_slot, k32, n32, N32)
@@ -419,14 +419,14 @@ function inverse_pluq_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
     U = pluq_extract_U(F)
     Linv = lower_triangular_inverse_no_copy(L)
     Uinv = upper_triangular_inverse_no_copy(U)
-    M = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
+    M = zeros(eltype(A.data), n, n, A.N)
     mul!(M, Uinv, Linv)
     # P*A*Q = L*U implies A^-1 = Q*U^-1*L^-1*P.  The stored vectors are
     # gather permutations, so applying Q and P on these opposite sides needs
     # their inverse gather maps.
     pdev = CuArray(Int32.(pluq_inverse_perm(F.q)))
     qdev = CuArray(Int32.(pluq_inverse_perm(F.p)))
-    out = GPUFiniteFieldMatrices.zeros(eltype(A.data), n, n, A.N)
+    out = zeros(eltype(A.data), n, n, A.N)
     tx = 16
     ty = 16
     @cuda threads=(tx, ty) blocks=(max(1, cld(n, tx)), max(1, cld(n, ty))) pluq_apply_paq_kernel!(out.data, M.data, pdev, qdev, Int32(n))
@@ -549,7 +549,7 @@ function _right_inverse_leading_block(A::CuModMatrix, opts::PLUQOptions)
     n = cols(A)
     m == n && return nothing
     T = eltype(A.data)
-    B = GPUFiniteFieldMatrices.zeros(T, m, m, A.N)
+    B = zeros(T, m, m, A.N)
     tx = 16
     ty = 16
     @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_copy_rect_block_kernel!(B.data, A.data, Int32(m), Int32(m))
@@ -561,7 +561,7 @@ function _right_inverse_leading_block(A::CuModMatrix, opts::PLUQOptions)
         end
         rethrow()
     end
-    X = GPUFiniteFieldMatrices.zeros(T, n, m, A.N)
+    X = zeros(T, n, m, A.N)
     @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_copy_rect_block_kernel!(X.data, Binv.data, Int32(m), Int32(m))
     return X
 end
@@ -574,7 +574,7 @@ function _right_inverse_selected_columns(A::CuModMatrix, opts::PLUQOptions)
     F.rank == m || return nothing
     qdev = CuArray(Int32.(F.q[1:m]))
     T = eltype(A.data)
-    B = GPUFiniteFieldMatrices.zeros(T, m, m, A.N)
+    B = zeros(T, m, m, A.N)
     tx = 16
     ty = 16
     @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_gather_selected_columns_kernel!(B.data, A.data, qdev, Int32(m))
@@ -584,7 +584,7 @@ function _right_inverse_selected_columns(A::CuModMatrix, opts::PLUQOptions)
         err isa InverseNotDefinedException || rethrow()
         return nothing
     end
-    X = GPUFiniteFieldMatrices.zeros(T, n, m, A.N)
+    X = zeros(T, n, m, A.N)
     @cuda threads=(tx, ty) blocks=(max(1, cld(m, tx)), max(1, cld(m, ty))) pluq_scatter_selected_inverse_kernel!(X.data, Binv.data, qdev, Int32(m))
     return X
 end
@@ -653,7 +653,7 @@ function right_inverse_new(A::CuModMatrix; options::PLUQOptions=PLUQOptions())
         end
         total = span_r * span_c
         k32 = _to_i32(k)
-        CUDA.fill!(pivot_slot, _to_i32(total + 1))
+        fill!(pivot_slot, _to_i32(total + 1))
         if span_r <= 32
             if opts.pivot_warp_kernel == :shfl
                 @cuda threads=32 blocks=1 pluq_find_pivot_rect_warp_shfl_kernel!(aug, pivot_slot, k32, m32, n32, N32)

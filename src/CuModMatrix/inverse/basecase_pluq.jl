@@ -412,7 +412,7 @@ function pluq_basecase_gpu!(Adata::CuArray{T,2}, N::Int, p::Vector{Int}, q::Vect
         kend32 = Int32(kend)
         span = kend - k + 1
         total = span * span
-        CUDA.fill!(pivot_slot, Int32(total + 1))
+        fill!(pivot_slot, Int32(total + 1))
         if span <= 32
             if options.pivot_warp_kernel == :shfl
                 @cuda threads=32 blocks=1 pluq_find_pivot_warp_shfl_kernel!(Adata, pivot_slot, kk, kend32, N32)
