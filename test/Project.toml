@@ -16,3 +16,8 @@ Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
 [sources]
 ReLint = { url = "https://github.com/RelationalAI-oss/ReLint.jl", rev = "main" }
+
+[compat]
+Aqua = "0.8.14"
+JET = "0.10.6"
+JuliaFormatter = "=2.14.0"

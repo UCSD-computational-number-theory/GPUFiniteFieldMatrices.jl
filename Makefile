@@ -5,7 +5,8 @@ FILE ?=
 
 .PHONY: quality quality-target quality-aqua quality-jet quality-staticlint quality-formatter fmt fmt-check fmt-file
 
-quality: quality-aqua quality-jet quality-staticlint quality-formatter
+quality:
+	$(TEST_ENV_RUN) --quality-suite "$(TARGET)"
 
 quality-target: quality
 
