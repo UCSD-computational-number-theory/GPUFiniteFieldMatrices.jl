@@ -11,8 +11,8 @@ repos:
           - --startup-file=no
           - --history-file=no
           - --project=@gpuffm_formatter
-          - tooling/format_julia.jl
-        files: '\.jl$'
+          - -e
+          - 'import Pkg; required = v"2.14.0"; versions = [dep.version for dep in values(Pkg.dependencies()) if dep.name == "JuliaFormatter"]; (length(versions) == 1 && only(versions) == required) || Pkg.add(Pkg.PackageSpec(name="JuliaFormatter", version=required)); using JuliaFormatter; Base.pkgversion(JuliaFormatter) == required || error("Expected JuliaFormatter $(required), found $(Base.pkgversion(JuliaFormatter))"); exit(JuliaFormatter.format(ARGS; throw_on_error=true) ? 0 : 1)'
         types: [julia]
         require_serial: true
 

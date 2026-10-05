@@ -73,19 +73,7 @@ Please ensure that you're using the latest version of Julia and that your CUDA d
 
 ## Developer checks
 
-With Julia 1.12 and Python 3.12 available, install the pinned pre-commit version and its Git hook:
-
-```sh
-python -m pip install pre-commit==4.6.2
-pre-commit install
-pre-commit run --all-files --show-diff-on-failure
-```
-
-JuliaFormatter 2.14.0 is installed into the isolated `@gpuffm_formatter` Julia environment by the hook. ReLint remains an optional manual check and does not run during normal commits or CI:
-
-```sh
-pre-commit run --hook-stage manual lint-checks --all-files
-```
+For local checks, run `python -m pip install pre-commit==4.6.2` followed by `pre-commit install`; CI runs these checks automatically. The hook installs JuliaFormatter 2.14.0 in an isolated environment, and ReLint remains an optional manual check.
 
 ## Sample code
 
