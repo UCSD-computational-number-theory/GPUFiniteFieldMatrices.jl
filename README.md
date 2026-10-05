@@ -71,10 +71,6 @@ using GPUFiniteFieldMatrices
 
 Please ensure that you're using the latest version of Julia and that your CUDA driver is installed. If the package manager gives you errors, try deleting Manifest.toml, upgrading Julia, updating the package registry, and updating CUDA.jl.
 
-## Developer checks
-
-For local checks, run `python -m pip install pre-commit==4.6.2` followed by `pre-commit install`; CI runs these checks automatically. The hook installs JuliaFormatter 2.14.0 in an isolated environment, and ReLint remains an optional manual check.
-
 ## Sample code
 
 #### Matrices modulo N
@@ -102,3 +98,7 @@ A * B
 ## License
 
 GPUFiniteFieldMatrices.jl is distributed under the MIT license.
+
+## Developer checks
+
+For local checks, run `python -m pip install pre-commit==4.6.2` followed by `pre-commit install`; CI runs these checks automatically. The hook installs JuliaFormatter 2.14.0 in an isolated environment, and ReLint remains an optional manual check.
