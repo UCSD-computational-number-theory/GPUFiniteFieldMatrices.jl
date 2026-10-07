@@ -6,10 +6,22 @@ using CUDA:
     CuArray,
     CuDeviceMatrix,
     CuDeviceVector,
+    CuRef,
     blockDim,
     blockIdx,
     gridDim,
     threadIdx
+
+# CUDA.jl 6 renamed the CUBLAS submodule to cuBLAS and deprecates the old
+# binding. CUDA.jl 5.11 exposes only CUBLAS, so keep that lookup in the
+# fallback branch and never evaluate it when the CUDA 6 name is available.
+# Use getfield so source analysis does not resolve the deprecated property.
+@static if isdefined(CUDA, :cuBLAS)
+    const _CUDA_BLAS = CUDA.cuBLAS
+else
+    const _CUDA_BLAS = getfield(CUDA, :CUBLAS)
+end
+
 using LinearAlgebra: LinearAlgebra, I, mul!, rank
 using SparseArrays: SparseArrays
 using IterTools: IterTools
